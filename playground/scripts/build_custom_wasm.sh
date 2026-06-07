@@ -19,8 +19,17 @@ if [[ ! -f "$WASM_DIR/GNUmakefile" ]]; then
 fi
 
 echo "[1/5] syncing tokenizer sources into SQLite wasm build dir"
-cp "$TOKENIZER_DIR/src/sqlite_tokenizer_ar.c" "$WASM_DIR/sqlite_tokenizer_ar.c"
-cp "$TOKENIZER_DIR/src/arabic_stopwords_99.h" "$WASM_DIR/arabic_stopwords_99.h"
+rm -rf \
+  "$WASM_DIR"/sqlite_tokenizer_ar.c \
+  "$WASM_DIR"/sqlite_tokenizer_ar_*.inc \
+  "$WASM_DIR"/sqlite_tokenizer_ar_*.h \
+  "$WASM_DIR"/arabic_stopwords_99.h \
+  "$WASM_DIR"/init \
+  "$WASM_DIR"/query_udf \
+  "$WASM_DIR"/token_utils \
+  "$WASM_DIR"/tokenizer_runtime \
+  "$WASM_DIR"/udf_core
+(cd "$TOKENIZER_DIR/src" && tar cf - .) | (cd "$WASM_DIR" && tar xf -)
 
 cat > "$WASM_DIR/sqlite3_wasm_extra_init.c" <<'C_EOF'
 #include "sqlite3.h"
