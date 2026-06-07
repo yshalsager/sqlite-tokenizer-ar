@@ -110,16 +110,16 @@ node ./playground/scripts/validate_playground_playwright.cjs
 From the repository root, you can also use:
 
 ```bash
-make playground_validate
-make playground_validate_firefox
-make playground_validate_batch
-make playground_validate_batch_append
+mise run playground:validate
+PLAYGROUND_BROWSER=firefox mise run playground:validate
+mise run playground:validate-batch
+PLAYGROUND_BATCH_APPEND=1 mise run playground:validate-batch
 ```
 
 If Playwright is installed in a non-repo location, pass:
 
 ```bash
-make playground_validate PLAYGROUND_NODE_PATH=/tmp/pw-runner/node_modules
+PLAYGROUND_NODE_PATH=/tmp/pw-runner/node_modules mise run playground:validate
 ```
 
 Optional env overrides:
@@ -136,14 +136,14 @@ The script prints `PLAYGROUND_VALIDATION_JSON=...` and writes `validation.json` 
 Batch mode runs multiple browsers and writes `summary.json` plus per-browser `validation.json` files:
 
 ```bash
-make playground_validate_batch \
+mise run playground:validate-batch \
   PLAYGROUND_NODE_PATH=/tmp/pw-runner/node_modules \
   PLAYGROUND_BROWSERS=chromium,firefox,webkit \
   PLAYGROUND_BATCH_OUT_DIR=test-results/playground/batch \
   PLAYGROUND_BATCH_APPEND=1
 ```
 
-Shortcut: `make playground_validate_batch_append` sets `PLAYGROUND_BATCH_APPEND=1`.
+Shortcut: `PLAYGROUND_BATCH_APPEND=1 mise run playground:validate-batch` appends results to the matrix.
 
 Batch env knobs:
 
@@ -162,21 +162,21 @@ Render a ready Markdown table row from a validation JSON:
 ```bash
 node ./playground/scripts/render_validation_matrix_row.cjs test-results/playground/validation.json
 # or
-make playground_matrix_row PLAYGROUND_VALIDATION_JSON=test-results/playground/validation.json
+node ./playground/scripts/render_validation_matrix_row.cjs test-results/playground/validation.json
 ```
 
 Append that row into the matrix file (idempotent, skips duplicates):
 
 ```bash
-make playground_matrix_append \
-  PLAYGROUND_VALIDATION_JSON=test-results/playground/validation.json \
-  PLAYGROUND_MATRIX_PATH=playground/WASM_VALIDATION_MATRIX.md
+node ./playground/scripts/append_validation_matrix_row.cjs \
+  test-results/playground/validation.json \
+  playground/WASM_VALIDATION_MATRIX.md
 ```
 
 For native/manual runs (no Playwright JSON), append a row directly:
 
 ```bash
-make playground_matrix_append_manual \
+node ./playground/scripts/append_manual_matrix_row.cjs \
   MATRIX_OS="macOS 14" \
   MATRIX_BROWSER="Safari 17.4" \
   MATRIX_SQLITE_VERSION="3.54.0" \

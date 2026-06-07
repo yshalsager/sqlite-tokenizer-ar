@@ -148,7 +148,7 @@ Core source is now split into focused modules under `tokenizer/src`:
 From `sqlite-tokenizer-ar/tokenizer`:
 
 ```bash
-make build
+mise run tokenizer:build
 ```
 
 Output:
@@ -538,21 +538,20 @@ The playground script already does this:
 From `sqlite-tokenizer-ar/tokenizer`:
 
 ```bash
-make verify_assets
-make test
-make fuzz
-make random_parity
-make random_parity_sweep
+mise run tokenizer:verify-assets
+mise run tokenizer:test
+mise run tokenizer:fuzz
+mise run tokenizer:random-parity
 ```
 
-`make test` runs:
+`mise run tokenizer:test` runs:
 
 - asset checksum verification
 - smoke integration checks
 - ported Lucene Arabic regression cases
 - deterministic fuzz/stress run
 
-`make random_parity` runs deterministic random-string analyzer parity:
+`mise run tokenizer:random-parity` runs deterministic random-string analyzer parity:
 
 - generates random mixed Arabic/Latin/digit/punctuation fixtures
 - runs Lucene Java `ArabicAnalyzer` oracle

@@ -4,19 +4,12 @@ Lucene query parser, AST, and planner that compiles to SQLite FTS5 execution pla
 
 ## Entrypoints
 
-- `make build`: validate query-compat CLI scaffold availability
-- `make test`: run parser roundtrip + query-compat smoke/regression tests
-- `make test` also enforces runtime-wrapper hygiene:
+- `mise run query:build`: validate query-compat CLI scaffold availability
+- `mise run query:public-test`: run parser roundtrip + query-compat smoke/regression tests using public fixtures
+- `mise run query:public-test` also enforces runtime-wrapper hygiene:
   - `scripts/test_runtime_reference_wrapper_routing.py`
   - `scripts/test_runtime_reference_cleanup_guard.py`
-- `make backend_parity_gate BACKEND_PARITY_DB=/path/to/db.sqlite3`: compare `python` vs `c` backends on query fixtures
-- `make ast_baseline_refresh`: regenerate AST baseline fixture (`tests/fixtures/queries/ast.baseline.core.jsonl`)
-- `make ast_backend_parity_gate AST_PARITY_DB=/path/to/db.sqlite3`: compare AST output across `python` and `c` parser backends
-- `make compile_baseline_refresh`: regenerate compile baseline fixture (`tests/fixtures/queries/compile.baseline.core.jsonl`)
-- `make compile_backend_parity_gate COMPILE_PARITY_DB=/path/to/db.sqlite3`: compare compile outcomes (`compiled`/`error`) across `python` and `c` backends
-- `make expansion_strict_baseline_refresh`: regenerate expansion/strict helper baseline (`tests/fixtures/queries/expansion.strict.baseline.jsonl`)
-- `make ranking_baseline_refresh`: regenerate ranking baseline fixture (`tests/fixtures/queries/ranking.baseline.core.jsonl`)
-- `make ranking_backend_parity_gate RANKING_PARITY_DB=/path/to/db.sqlite3`: compare ranking outputs (compiled + ordered hits + score tolerance) across `python` and `c` backends
+- Private/full parity refresh and backend gates are intentionally outside the public task lane because they require private corpus fixtures.
 - Planner APIs (from `scripts/sqlite_query_compat.py`):
   - `parse_query_ast(query) -> QueryAst`
   - `build_execution_plan(conn, fts_table, runtime_field, query, options) -> SqliteExecutionPlan`
@@ -25,8 +18,8 @@ Lucene query parser, AST, and planner that compiles to SQLite FTS5 execution pla
 ## Status Snapshot (2026-04-19)
 
 - Query parity gates on `a remote Linux host` are clean:
-  - `make test_query_parity`: `500/500`, `mismatch_rows=0`
-  - `make test_query_full`: `990/990`, `mismatch_rows=0`
+  - private parity gate: `500/500`, `mismatch_rows=0`
+  - private full gate: `990/990`, `mismatch_rows=0`
 - Runtime module split:
   - `scripts/sqlite_query_compat.py` is now primarily thin wrapper APIs and backend dispatch.
   - `scripts/python_reference_helpers.py` holds reference implementations used by tests/migration guards.

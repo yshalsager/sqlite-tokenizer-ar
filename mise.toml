@@ -2,4 +2,151 @@
 python = '3.12'
 uv = '0.11'
 node = '22'
-emsdk = '4.0'
+
+[tasks.build]
+description = 'Build the native tokenizer extension and validate query compatibility entrypoints'
+depends = ['tokenizer:build', 'query:build']
+
+[tasks.test]
+description = 'Run the public smoke test lane'
+depends = ['tokenizer:test', 'query:public-test']
+
+[tasks.clean]
+description = 'Remove local build outputs'
+run = '''
+rm -rf tokenizer/build query_compat/build test-results
+'''
+
+[tasks.'tokenizer:build']
+description = 'Build tokenizer/build/sqlite_tokenizer_ar.so'
+run = '''
+set -eu
+cd tokenizer
+cc_bin="${CC:-cc}"
+cflags="${CFLAGS:--O2 -fPIC -Wall -Wextra}"
+uname_s="$(uname -s)"
+sqlite_cflags="${SQLITE_CFLAGS:-}"
+if [ -z "$sqlite_cflags" ]; then
+  if [ "$uname_s" = Darwin ] && command -v brew >/dev/null 2>&1 && brew --prefix sqlite >/dev/null 2>&1; then
+    sqlite_cflags="-I$(brew --prefix sqlite)/include"
+  else
+    sqlite_cflags="$(pkg-config --cflags sqlite3 2>/dev/null || true)"
+  fi
+fi
+if [ "$uname_s" = Darwin ]; then
+  ldflags="${LDFLAGS:--dynamiclib -undefined dynamic_lookup}"
+  ldlibs="${LDLIBS:-}"
+else
+  ldflags="${LDFLAGS:--shared}"
+  ldlibs="${LDLIBS:--lm}"
+fi
+mkdir -p build
+$cc_bin $cflags $sqlite_cflags src/sqlite_tokenizer_ar.c $ldflags $ldlibs -o build/sqlite_tokenizer_ar.so
+'''
+
+[tasks.'tokenizer:verify-assets']
+description = 'Verify pinned Lucene reference assets'
+run = '''
+cd tokenizer
+./scripts/verify_assets.sh
+'''
+
+[tasks.'tokenizer:test']
+description = 'Run tokenizer smoke, ported-case, and fuzz tests'
+depends = ['tokenizer:build']
+run = '''
+set -eu
+cd tokenizer
+./scripts/verify_assets.sh
+python scripts/smoke_test.py
+python scripts/test_lucene_ported_cases.py
+python scripts/fuzz_test.py --iterations 2000 --max-len 280 --seed 99
+'''
+
+[tasks.'tokenizer:fuzz']
+description = 'Run tokenizer fuzz test with default settings'
+depends = ['tokenizer:build']
+run = '''
+cd tokenizer
+python scripts/fuzz_test.py
+'''
+
+[tasks.'tokenizer:random-parity']
+description = 'Run deterministic Lucene-vs-tokenizer random analyzer parity'
+depends = ['tokenizer:build']
+run = '''
+cd tokenizer
+python scripts/test_lucene_random_parity.py --strict --check-positions
+'''
+
+[tasks.'query:build']
+description = 'Validate query compatibility CLI availability'
+run = '''
+cd query_compat
+python scripts/sqlite_query_compat.py --help >/dev/null
+echo 'ok: query compat CLI scaffold is available'
+'''
+
+[tasks.'query:public-test']
+description = 'Run query compatibility tests that use public fixtures only'
+depends = ['tokenizer:build']
+run = '''
+set -eu
+cd query_compat
+python scripts/test_query_parser_roundtrip.py
+python scripts/test_ast_baseline.py
+python scripts/test_compile_baseline.py
+python scripts/test_expansion_strict_baseline.py
+python scripts/test_query_backend_gate.py
+python scripts/test_ast_c_simple_shapes.py
+python scripts/test_ast_c_fixture_coverage.py
+python scripts/test_ast_c_runtime_gap.py
+python scripts/test_ast_leaves_udf.py
+python scripts/test_ast_udf_internal_parity.py
+python scripts/test_ast_udf_fallback_policy.py
+python scripts/test_udf_missing_strict_policy.py
+python scripts/test_ast_backend_parity_gate.py
+python scripts/test_backend_parity_gate.py
+python scripts/test_compile_backend_parity_gate.py
+python scripts/test_execute_query_c_simple_term.py
+python scripts/test_execute_c_fixture_coverage.py
+python scripts/test_cli_default_backend.py
+python scripts/test_ranking_baseline.py
+python scripts/test_ranking_backend_parity_gate.py
+python scripts/test_norm_helpers_udf.py
+python scripts/test_token_helpers_udf.py
+python scripts/test_runtime_reference_wrapper_routing.py
+python scripts/test_runtime_reference_cleanup_guard.py
+python scripts/test_query_compat.py
+'''
+
+[tasks.'playground:verify-wasm']
+description = 'Verify generated custom SQLite WASM bundle checksums'
+run = '''
+./playground/scripts/verify_custom_wasm.sh
+'''
+
+[tasks.'playground:build-wasm']
+description = 'Build official SQLite WASM with sqlite_tokenizer_ar; pass SQLITE_SRC_DIR=/path/to/sqlite-source'
+run = '''
+set -eu
+if [ -z "${SQLITE_SRC_DIR:-}" ]; then
+  echo 'error: set SQLITE_SRC_DIR=/path/to/sqlite-source-tree' >&2
+  exit 1
+fi
+mise install emsdk@4.0
+export EMSDK="$(mise where emsdk@4.0)"
+mise x emsdk@4.0 -- ./playground/scripts/build_custom_wasm.sh "$SQLITE_SRC_DIR"
+'''
+
+[tasks.'playground:validate']
+description = 'Run Playwright playground validation against PLAYGROUND_URL'
+run = '''
+node ./playground/scripts/validate_playground_playwright.cjs
+'''
+
+[tasks.'playground:validate-batch']
+description = 'Run batch Playwright playground validation'
+run = '''
+node ./playground/scripts/validate_playground_batch.cjs
+'''

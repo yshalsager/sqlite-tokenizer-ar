@@ -17,7 +17,7 @@ Reference assets are pinned to Lucene `9.9.0` for reproducibility. The ArabicAna
 ## Build
 
 ```bash
-make build
+mise run build
 ```
 
 This produces:
@@ -62,7 +62,7 @@ Use it when you need Lucene-style search semantics. Use the tokenizer directly w
 ## Test
 
 ```bash
-make test
+mise run test
 ```
 
 The public test lane uses small synthetic fixtures. Full corpus parity runs are kept outside this repository because they depend on large third-party/private datasets.
@@ -73,6 +73,7 @@ The playground uses official SQLite WASM built with this extension as an extra i
 
 ```bash
 ./playground/scripts/build_custom_wasm.sh /path/to/sqlite-source-tree
+SQLITE_SRC_DIR=/path/to/sqlite-source-tree mise run playground:build-wasm
 python3 -m http.server 8080
 ```
 

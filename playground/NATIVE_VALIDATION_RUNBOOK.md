@@ -80,7 +80,7 @@ Run these in order for each target browser/device.
 Or append directly via make:
 
 ```bash
-make playground_matrix_append_manual \
+node ./playground/scripts/append_manual_matrix_row.cjs \
   MATRIX_OS="<OS>" \
   MATRIX_BROWSER="<Browser>" \
   MATRIX_SQLITE_VERSION="<sqlite_version>" \

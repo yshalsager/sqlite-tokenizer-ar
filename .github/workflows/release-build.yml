@@ -143,7 +143,7 @@ jobs:
             ccache --zero-stats || true
           fi
 
-          make -C tokenizer build
+          mise run tokenizer:build
 
           if [[ "${use_ccache}" == 'true' ]]; then
             ccache --show-stats || true
@@ -162,8 +162,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          export EMSDK="$(mise where emsdk)"
-          ./playground/scripts/build_custom_wasm.sh '${{ steps.vars.outputs.sqlite_src_dir }}'
+          mise install emsdk@4.0
+          export EMSDK="$(mise where emsdk@4.0)"
+          mise x emsdk@4.0 -- ./playground/scripts/build_custom_wasm.sh '${{ steps.vars.outputs.sqlite_src_dir }}'
 
       - name: Verify custom WASM bundle integrity
         shell: bash
