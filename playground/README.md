@@ -54,7 +54,7 @@ The playground loads a local matched bundle from `playground/sqlite-wasm-custom/
 The SQLite source tree must already be set up for `ext/wasm` builds (`emcc`/Emscripten available).
 
 ```bash
-./playground/scripts/build_custom_wasm.sh /absolute/path/to/sqlite-source-tree
+SQLITE_SRC_DIR=/absolute/path/to/sqlite-source-tree mise run build-wasm
 ```
 
 This script:

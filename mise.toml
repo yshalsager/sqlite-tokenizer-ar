@@ -120,33 +120,30 @@ python scripts/test_runtime_reference_cleanup_guard.py
 python scripts/test_query_compat.py
 '''
 
-[tasks.'playground:verify-wasm']
-description = 'Verify generated custom SQLite WASM bundle checksums'
+[tasks.'playground:build-wasm']
+description = 'Build official SQLite WASM via playground/mise.toml'
 run = '''
-./playground/scripts/verify_custom_wasm.sh
+cd playground
+mise run build-wasm
 '''
 
-[tasks.'playground:build-wasm']
-description = 'Build official SQLite WASM with sqlite_tokenizer_ar; pass SQLITE_SRC_DIR=/path/to/sqlite-source'
+[tasks.'playground:verify-wasm']
+description = 'Verify generated custom SQLite WASM bundle checksums via playground/mise.toml'
 run = '''
-set -eu
-if [ -z "${SQLITE_SRC_DIR:-}" ]; then
-  echo 'error: set SQLITE_SRC_DIR=/path/to/sqlite-source-tree' >&2
-  exit 1
-fi
-mise install emsdk@4.0
-export EMSDK="$(mise where emsdk@4.0)"
-mise x emsdk@4.0 -- ./playground/scripts/build_custom_wasm.sh "$SQLITE_SRC_DIR"
+cd playground
+mise run verify-wasm
 '''
 
 [tasks.'playground:validate']
-description = 'Run Playwright playground validation against PLAYGROUND_URL'
+description = 'Run Playwright playground validation via playground/mise.toml'
 run = '''
-node ./playground/scripts/validate_playground_playwright.cjs
+cd playground
+mise run validate
 '''
 
 [tasks.'playground:validate-batch']
-description = 'Run batch Playwright playground validation'
+description = 'Run batch Playwright playground validation via playground/mise.toml'
 run = '''
-node ./playground/scripts/validate_playground_batch.cjs
+cd playground
+mise run validate-batch
 '''

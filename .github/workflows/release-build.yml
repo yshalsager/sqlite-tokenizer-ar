@@ -162,9 +162,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mise install emsdk@4.0
-          export EMSDK="$(mise where emsdk@4.0)"
-          mise x emsdk@4.0 -- ./playground/scripts/build_custom_wasm.sh '${{ steps.vars.outputs.sqlite_src_dir }}'
+          SQLITE_SRC_DIR='${{ steps.vars.outputs.sqlite_src_dir }}' mise -C playground run build-wasm
 
       - name: Verify custom WASM bundle integrity
         shell: bash

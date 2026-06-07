@@ -72,7 +72,6 @@ The public test lane uses small synthetic fixtures. Full corpus parity runs are 
 The playground uses official SQLite WASM built with this extension as an extra init module:
 
 ```bash
-./playground/scripts/build_custom_wasm.sh /path/to/sqlite-source-tree
 SQLITE_SRC_DIR=/path/to/sqlite-source-tree mise run playground:build-wasm
 python3 -m http.server 8080
 ```

@@ -1,0 +1,33 @@
+[tools]
+node = '22'
+emsdk = '4.0'
+
+[tasks.'build-wasm']
+description = 'Build official SQLite WASM with sqlite_tokenizer_ar; pass SQLITE_SRC_DIR=/path/to/sqlite-source'
+run = '''
+set -eu
+if [ -z "${SQLITE_SRC_DIR:-}" ]; then
+  echo 'error: set SQLITE_SRC_DIR=/path/to/sqlite-source-tree' >&2
+  exit 1
+fi
+export EMSDK="$(mise where emsdk)"
+./scripts/build_custom_wasm.sh "$SQLITE_SRC_DIR"
+'''
+
+[tasks.'verify-wasm']
+description = 'Verify generated custom SQLite WASM bundle checksums'
+run = '''
+./scripts/verify_custom_wasm.sh
+'''
+
+[tasks.validate]
+description = 'Run Playwright playground validation against PLAYGROUND_URL'
+run = '''
+node ./scripts/validate_playground_playwright.cjs
+'''
+
+[tasks.'validate-batch']
+description = 'Run batch Playwright playground validation'
+run = '''
+node ./scripts/validate_playground_batch.cjs
+'''

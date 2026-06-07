@@ -158,7 +158,7 @@ Output:
 Notes:
 
 - SQLite must support FTS5.
-- On macOS, the Makefile prefers Homebrew SQLite headers when available.
+- On macOS, `mise run tokenizer:build` prefers Homebrew SQLite headers when available.
 - The extension is built as a loadable module and should not link libsqlite3 directly.
 
 ## Quick Usage (SQLite)
