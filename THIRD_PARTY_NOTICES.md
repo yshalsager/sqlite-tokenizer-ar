@@ -5,11 +5,14 @@ This project ports behavior from Lucene's Arabic analysis pipeline and includes 
 ## Apache Lucene
 
 - Project: Apache Lucene
-- Version target: 9.9.0
+- Reference asset version: 9.9.0
+- Latest checked compatible version: 10.4.0
 - License: Apache License 2.0
 - Source: https://lucene.apache.org/
 
 Files under `tokenizer/assets/lucene_9_9_0/` are reference copies used to verify the ported behavior and preserve source provenance. The C tokenizer code is a port that targets behavioral compatibility with Lucene Arabic analysis.
+
+On 2026-06-07, Lucene `9.9.0` and `10.4.0` were source-diffed for the ArabicAnalyzer pipeline. No behavior changes were found in `ArabicAnalyzer`, Arabic normalization/stem filters, stopwords, `StandardTokenizer`, lowercase, decimal digit folding, or stop filtering. `ArabicNormalizer` and `ArabicStemmer` only changed Java visibility modifiers.
 
 ## Arabic Stopwords
 

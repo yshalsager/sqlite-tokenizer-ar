@@ -1,6 +1,6 @@
 # sqlite_tokenizer_ar (C Tokenizer)
 
-Native SQLite FTS5 tokenizer extension that reproduces Lucene 9.9 ArabicAnalyzer behavior for index/query term analysis.
+Native SQLite FTS5 tokenizer extension that reproduces Lucene ArabicAnalyzer behavior for index/query term analysis.
 
 ## Scope
 
@@ -70,6 +70,7 @@ The tokenizer follows Lucene ArabicAnalyzer order:
 6. Arabic light stemming
 
 Pinned Lucene references are under `assets/lucene_9_9_0/`.
+Those assets are pinned to Lucene `9.9.0` for reproducibility; Lucene `10.4.0` was source-diffed on 2026-06-07 and did not change the ArabicAnalyzer behavior surface used by this tokenizer.
 
 ## Source Layout
 
