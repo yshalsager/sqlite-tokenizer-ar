@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+import sqlite3
+from pathlib import Path
+
+
+def assert_count(conn: sqlite3.Connection, query: str, expected: int) -> None:
+    row = conn.execute('SELECT count(*) FROM t WHERE t MATCH ?', (query,)).fetchone()
+    actual = 0 if row is None else int(row[0])
+    if actual != expected:
+        raise SystemExit(f"error: query={query!r} expected={expected} got={actual}")
+
+
+def assert_term_doc_count(conn: sqlite3.Connection, term: str, expected: int) -> None:
+    row = conn.execute('SELECT count(*) FROM tv WHERE term = ?', (term,)).fetchone()
+    actual = 0 if row is None else int(row[0])
+    if actual != expected:
+        raise SystemExit(f"error: term={term!r} expected_docs={expected} got={actual}")
+
+
+def assert_value(conn: sqlite3.Connection, sql: str, params: tuple, expected, label: str) -> None:
+    row = conn.execute(sql, params).fetchone()
+    actual = None if row is None else row[0]
+    if actual != expected:
+        raise SystemExit(f'error: {label} expected={expected!r} got={actual!r}')
+
+
+def main() -> None:
+    tokenizer_dir = Path(__file__).resolve().parent.parent
+    extension_path = tokenizer_dir / 'build' / 'sqlite_tokenizer_ar.so'
+    if not extension_path.exists():
+        raise SystemExit(f'error: extension not found: {extension_path}')
+
+    conn = sqlite3.connect(':memory:')
+    try:
+        conn.enable_load_extension(True)
+        conn.load_extension(str(extension_path))
+        conn.execute("CREATE VIRTUAL TABLE t USING fts5(content, tokenize='sqlite_tokenizer_ar')")
+        conn.execute("INSERT INTO t(content) VALUES ('الصلاة في الإسلام')")
+        conn.execute("INSERT INTO t(content) VALUES ('الزكاة ركن')")
+        conn.execute("INSERT INTO t(content) VALUES ('قُرْآن كريم')")
+        conn.execute("INSERT INTO t(content) VALUES ('الفتى الصالح')")
+        conn.execute("INSERT INTO t(content) VALUES ('طبعة ١٢٣')")
+        conn.execute("INSERT INTO t(content) VALUES ('والكتاب مفيد')")
+        conn.execute("INSERT INTO t(content) VALUES ('كتابها جديد')")
+        conn.execute("INSERT INTO t(content) VALUES ('___')")
+        conn.execute("INSERT INTO t(content) VALUES ('ـــــ')")
+        conn.execute("INSERT INTO t(content) VALUES ('البريد الالكتروني:ahmd577@gmile.com')")
+        conn.execute("INSERT INTO t(content) VALUES ('السنن٢:ولكن يصلي')")
+        conn.execute("INSERT INTO t(content) VALUES ('مرجع ص350،351 وطبعة ط16،1408')")
+        conn.execute("INSERT INTO t(content) VALUES (?)", ("والعجيب أن إ'لام الغرب",))
+        conn.execute("INSERT INTO t(content) VALUES ('توحيد من2litera في الاشتقاق')")
+        conn.execute("INSERT INTO t(content) VALUES ('موسوعية encyclopedique:قد بدأت')")
+        conn.execute("INSERT INTO t(content) VALUES ('الرياض ̈الرابعة')")
+        conn.execute("INSERT INTO t(content) VALUES ('فصولٍ: \u00ad\u00ad\u00ad · الفصل الأول')")
+        conn.execute("INSERT INTO t(content) VALUES ('كالرم÷اح والطثري')")
+
+        assert_count(conn, 'الصلاة', 1)
+        assert_count(conn, 'الاسلام', 1)
+        assert_count(conn, 'الزكاه', 1)
+        assert_count(conn, 'قران', 1)
+        assert_count(conn, 'الفتي', 1)
+        assert_count(conn, '123', 1)
+        assert_count(conn, 'في', 0)
+        assert_count(conn, 'كتاب', 2)
+        assert_count(conn, '___', 0)
+
+        conn.execute("CREATE VIRTUAL TABLE tv USING fts5vocab(t, 'row')")
+        assert_term_doc_count(conn, 'الكتروني:ahmd577', 1)
+        assert_term_doc_count(conn, 'ahmd577', 0)
+        assert_term_doc_count(conn, 'سنن2', 1)
+        assert_term_doc_count(conn, 'لكن', 1)
+        assert_term_doc_count(conn, 'سنن2:ولكن', 0)
+        assert_term_doc_count(conn, 'ص350،351', 1)
+        assert_term_doc_count(conn, 'ط16،1408', 1)
+        assert_term_doc_count(conn, "ا'لام", 1)
+        assert_term_doc_count(conn, 'من2litera', 1)
+        assert_term_doc_count(conn, 'encyclopedique:قد', 1)
+        assert_term_doc_count(conn, '÷', 0)
+        assert_term_doc_count(conn, '\u00ad\u00ad\u00ad', 0)
+        assert_term_doc_count(conn, '̈', 0)
+        row_empty = conn.execute("SELECT count(*) FROM tv WHERE term = ?", ('\ue000',)).fetchone()
+        if row_empty is None or int(row_empty[0]) < 1:
+            raise SystemExit('error: expected empty-token sentinel for tatweel-only input')
+
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_analyze_json(?)",
+            ('الذين ملكت أيمانكم',),
+            '["ملكت","ايمانكم"]',
+            'analyze_json stopword pipeline',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_normalize(?, 1, 1, 1, 1, 1, 0)",
+            ('قُرْآن ١٢٣ مدرسة',),
+            'قران 123 مدرسه',
+            'normalize folded forms',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_normalize(?, 1, 1, 1, 1, 0, 1)",
+            ('*قُر?آن*',),
+            '*قر?ان*',
+            'normalize wildcard preserve metacharacters',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_has_sensitive_forms(?, 1, 1, 1, 1)",
+            ('قُرْآن ١٢٣ مدرسة',),
+            1,
+            'strict sensitivity positive',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_has_sensitive_forms(?, 1, 1, 1, 1)",
+            ('كتاب مفيد',),
+            0,
+            'strict sensitivity negative',
+        )
+
+        conn.execute(
+            "CREATE VIRTUAL TABLE t_excl USING fts5(content, tokenize='sqlite_tokenizer_ar stem_exclusion كتابها')"
+        )
+        conn.execute("INSERT INTO t_excl(content) VALUES ('كتابها جديد')")
+        row_excl_exact = conn.execute("SELECT count(*) FROM t_excl WHERE t_excl MATCH 'كتابها'").fetchone()
+        row_excl_stem = conn.execute("SELECT count(*) FROM t_excl WHERE t_excl MATCH 'كتاب'").fetchone()
+        if (row_excl_exact is None or row_excl_exact[0] != 1) or (row_excl_stem is None or row_excl_stem[0] != 0):
+            raise SystemExit('error: stem exclusion behavior mismatch')
+
+        print('ok: tokenizer_smoke')
+    finally:
+        conn.close()
+
+
+if __name__ == '__main__':
+    main()

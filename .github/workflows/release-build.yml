@@ -1,0 +1,344 @@
+name: release-build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      sqlite_ref:
+        description: 'SQLite source ref/tag/branch for WASM build'
+        required: false
+        default: 'version-3.53.0'
+      cache_bust:
+        description: 'Optional cache-bust token appended to cache keys'
+        required: false
+        default: ''
+      use_ccache:
+        description: 'Enable optional ccache for tokenizer compilation'
+        required: false
+        default: 'false'
+      run_sqlite_compat:
+        description: 'Run SQLite runtime compatibility smoke matrix'
+        required: false
+        default: 'true'
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      release_label: ${{ steps.vars.outputs.release_label }}
+      cache_bust: ${{ steps.vars.outputs.cache_bust }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve build variables
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sqlite_ref='${{ github.event.inputs.sqlite_ref }}'
+          if [[ -z "${sqlite_ref}" ]]; then
+            sqlite_ref='version-3.53.0'
+          fi
+          safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
+          sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
+
+          cache_bust='${{ github.event.inputs.cache_bust }}'
+          if [[ -z "${cache_bust}" ]]; then
+            cache_bust='none'
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == 'tag' ]]; then
+            release_label="${GITHUB_REF_NAME}"
+          else
+            release_label="manual-${GITHUB_RUN_ID}"
+          fi
+
+          echo "sqlite_ref=${sqlite_ref}" >> "${GITHUB_OUTPUT}"
+          echo "sqlite_src_dir=${sqlite_src_dir}" >> "${GITHUB_OUTPUT}"
+          echo "cache_bust=${cache_bust}" >> "${GITHUB_OUTPUT}"
+          echo "release_label=${release_label}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup mise toolchain
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.3.10
+          install: true
+          cache: true
+          cache_key_prefix: mise-release-v1
+
+      - name: Install OS build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libsqlite3-dev git
+
+      - name: Cache SQLite source tree
+        id: cache_sqlite_source
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.vars.outputs.sqlite_src_dir }}
+          key: sqlite-source-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ steps.vars.outputs.cache_bust }}
+
+      - name: Fetch SQLite source
+        if: steps.cache_sqlite_source.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sqlite_ref='${{ steps.vars.outputs.sqlite_ref }}'
+          sqlite_src_dir='${{ steps.vars.outputs.sqlite_src_dir }}'
+
+          mkdir -p "${sqlite_src_dir}"
+          if [[ ! -d "${sqlite_src_dir}/.git" ]]; then
+            git -C "${sqlite_src_dir}" init
+          fi
+
+          if git -C "${sqlite_src_dir}" remote get-url origin >/dev/null 2>&1; then
+            git -C "${sqlite_src_dir}" remote set-url origin https://github.com/sqlite/sqlite.git
+          else
+            git -C "${sqlite_src_dir}" remote add origin https://github.com/sqlite/sqlite.git
+          fi
+
+          git -C "${sqlite_src_dir}" fetch --depth 1 origin "${sqlite_ref}"
+          git -C "${sqlite_src_dir}" checkout --force FETCH_HEAD
+          git -C "${sqlite_src_dir}" clean -fdx
+
+      - name: Install ccache
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_ccache == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache
+
+      - name: Cache ccache
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_ccache == 'true' }}
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.ccache
+            ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('tokenizer/src/sqlite_tokenizer_ar.c') }}-${{ steps.vars.outputs.cache_bust }}
+
+      - name: Build tokenizer extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          use_ccache='${{ github.event_name == 'workflow_dispatch' && inputs.use_ccache == 'true' }}'
+          if [[ "${use_ccache}" == 'true' ]]; then
+            export CC='ccache cc'
+            ccache --zero-stats || true
+          fi
+
+          make -C tokenizer build
+
+          if [[ "${use_ccache}" == 'true' ]]; then
+            ccache --show-stats || true
+          fi
+
+      - name: Cache WASM bundle
+        id: cache_wasm
+        uses: actions/cache@v5
+        with:
+          path: playground/sqlite-wasm-custom
+          key: wasm-bundle-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ hashFiles('tokenizer/src/sqlite_tokenizer_ar.c', 'playground/scripts/build_custom_wasm.sh', 'playground/scripts/verify_custom_wasm.sh') }}-${{ steps.vars.outputs.cache_bust }}
+
+      - name: Build custom WASM bundle
+        if: steps.cache_wasm.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export EMSDK="$(mise where emsdk)"
+          ./playground/scripts/build_custom_wasm.sh '${{ steps.vars.outputs.sqlite_src_dir }}'
+
+      - name: Verify custom WASM bundle integrity
+        shell: bash
+        run: ./playground/scripts/verify_custom_wasm.sh
+
+      - name: Create checksum for tokenizer artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum tokenizer/build/sqlite_tokenizer_ar.so > tokenizer/build/sqlite_tokenizer_ar.so.sha256
+
+      - name: Upload tokenizer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tokenizer-linux-${{ steps.vars.outputs.release_label }}
+          if-no-files-found: error
+          path: |
+            tokenizer/build/sqlite_tokenizer_ar.so
+            tokenizer/build/sqlite_tokenizer_ar.so.sha256
+
+      - name: Upload WASM bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sqlite-wasm-custom-${{ steps.vars.outputs.release_label }}
+          if-no-files-found: error
+          path: |
+            playground/sqlite-wasm-custom/sqlite3.wasm
+            playground/sqlite-wasm-custom/sqlite3.mjs
+            playground/sqlite-wasm-custom/sqlite3-worker1.js
+            playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
+            playground/sqlite-wasm-custom/SHA256SUMS
+
+      - name: Publish release assets (tag runs)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            tokenizer/build/sqlite_tokenizer_ar.so
+            tokenizer/build/sqlite_tokenizer_ar.so.sha256
+            playground/sqlite-wasm-custom/sqlite3.wasm
+            playground/sqlite-wasm-custom/sqlite3.mjs
+            playground/sqlite-wasm-custom/sqlite3-worker1.js
+            playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
+            playground/sqlite-wasm-custom/SHA256SUMS
+
+  sqlite-compat-smoke:
+    needs: build
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_sqlite_compat == 'true') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlite_ref:
+          - version-3.40.1
+          - version-3.51.2
+          - version-3.53.0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve matrix variables
+        id: matrix_vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          sqlite_ref='${{ matrix.sqlite_ref }}'
+          safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
+          sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
+          echo "sqlite_ref=${sqlite_ref}" >> "${GITHUB_OUTPUT}"
+          echo "sqlite_src_dir=${sqlite_src_dir}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install OS build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libsqlite3-dev git
+
+      - name: Download tokenizer artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: tokenizer-linux-${{ needs.build.outputs.release_label }}
+          path: tokenizer/build
+
+      - name: Cache SQLite source tree
+        id: cache_sqlite_source
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.matrix_vars.outputs.sqlite_src_dir }}
+          key: sqlite-compat-source-${{ runner.os }}-${{ steps.matrix_vars.outputs.sqlite_ref }}-${{ needs.build.outputs.cache_bust }}
+
+      - name: Fetch SQLite source
+        if: steps.cache_sqlite_source.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sqlite_ref='${{ steps.matrix_vars.outputs.sqlite_ref }}'
+          sqlite_src_dir='${{ steps.matrix_vars.outputs.sqlite_src_dir }}'
+
+          mkdir -p "${sqlite_src_dir}"
+          if [[ ! -d "${sqlite_src_dir}/.git" ]]; then
+            git -C "${sqlite_src_dir}" init
+          fi
+
+          if git -C "${sqlite_src_dir}" remote get-url origin >/dev/null 2>&1; then
+            git -C "${sqlite_src_dir}" remote set-url origin https://github.com/sqlite/sqlite.git
+          else
+            git -C "${sqlite_src_dir}" remote add origin https://github.com/sqlite/sqlite.git
+          fi
+
+          git -C "${sqlite_src_dir}" fetch --depth 1 origin "${sqlite_ref}"
+          git -C "${sqlite_src_dir}" checkout --force FETCH_HEAD
+          git -C "${sqlite_src_dir}" clean -fdx
+
+      - name: Build SQLite shell for matrix runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sqlite_src_dir='${{ steps.matrix_vars.outputs.sqlite_src_dir }}'
+          cd "${sqlite_src_dir}"
+          if [[ -x sqlite3 ]]; then
+            echo "sqlite3 shell already present from cache; skipping rebuild"
+            exit 0
+          fi
+          ./configure CFLAGS='-O2 -DSQLITE_ENABLE_FTS5'
+          make -j2 sqlite3
+
+      - name: Run tokenizer compatibility smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          sqlite_bin='${{ steps.matrix_vars.outputs.sqlite_src_dir }}/sqlite3'
+          ext_path="${GITHUB_WORKSPACE}/tokenizer/build/sqlite_tokenizer_ar.so"
+
+          if [[ ! -x "${sqlite_bin}" ]]; then
+            echo "error: sqlite shell not found at ${sqlite_bin}" >&2
+            exit 1
+          fi
+          if [[ ! -f "${ext_path}" ]]; then
+            echo "error: tokenizer extension not found at ${ext_path}" >&2
+            exit 1
+          fi
+
+          output="$(
+            {
+              printf '.load %s\n' "${ext_path}"
+              printf "SELECT sqlite_compileoption_used('ENABLE_FTS5');\n"
+              printf "CREATE VIRTUAL TABLE t USING fts5(content, tokenize='sqlite_tokenizer_ar');\n"
+              printf "INSERT INTO t(content) VALUES('قُرْآن كريم'),('هذه كتابها مفيد');\n"
+              printf "SELECT count(*) FROM t WHERE t MATCH 'قران';\n"
+              printf "SELECT count(*) FROM t WHERE t MATCH 'كتاب';\n"
+              printf "SELECT sqlite_tokenizer_ar_normalize('قُرْآن ١٢٣', 1, 1, 1, 1, 0, 0);\n"
+            } | "${sqlite_bin}" -batch -noheader :memory:
+          )"
+          mapfile -t lines <<< "${output}"
+
+          if [[ "${#lines[@]}" -lt 4 ]]; then
+            echo "error: unexpected smoke output for ${{ matrix.sqlite_ref }}" >&2
+            printf '%s\n' "${output}" >&2
+            exit 1
+          fi
+
+          fts5_enabled="${lines[0]}"
+          quran_hits="${lines[1]}"
+          kitab_hits="${lines[2]}"
+          normalized="${lines[3]}"
+
+          [[ "${fts5_enabled}" == "1" ]] || { echo "error: FTS5 not enabled for ${{ matrix.sqlite_ref }}"; exit 1; }
+          [[ "${quran_hits}" == "1" ]] || { echo "error: expected قران hits=1 for ${{ matrix.sqlite_ref }}, got ${quran_hits}"; exit 1; }
+          [[ "${kitab_hits}" == "1" ]] || { echo "error: expected كتاب hits=1 for ${{ matrix.sqlite_ref }}, got ${kitab_hits}"; exit 1; }
+          [[ "${normalized}" == "قران 123" ]] || { echo "error: normalization mismatch for ${{ matrix.sqlite_ref }}: ${normalized}"; exit 1; }
+
+          echo "ok: sqlite runtime compat smoke passed for ${{ matrix.sqlite_ref }}"

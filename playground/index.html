@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang='en'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Lucene → SQLite WASM Playground</title>
+    <link rel='preconnect' href='https://fonts.googleapis.com' />
+    <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin />
+    <link href='https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap' rel='stylesheet' />
+    <link rel='stylesheet' href='./style.css' />
+  </head>
+  <body>
+    <main class='layout'>
+      <section class='card hero'>
+        <p class='eyebrow'>Shamela Reboot</p>
+        <h1>SQLite WASM Arabic Search Playground</h1>
+        <p class='subtitle'>
+          In-browser demo for query-compat progress using native `sqlite_tokenizer_ar` on a custom SQLite WASM build: boolean logic, wildcard/fuzzy expansion, strict Arabic form toggles, and deterministic ranking.
+        </p>
+      </section>
+
+      <section class='workbench'>
+        <section class='card controls'>
+          <label class='query-label' for='query'>Query</label>
+          <div class='query-row'>
+            <input id='query' type='text' value='م*ور^2 OR قُرْآن' autocomplete='off' spellcheck='false' />
+            <button id='run'>Run Search</button>
+          </div>
+          <div class='query-tools'>
+            <button id='shareState' class='ghost' type='button'>Copy Share Link</button>
+          </div>
+
+          <div class='example-row'>
+            <button class='chip' data-query='الحدي*'>prefix</button>
+            <button class='chip' data-query='*الحديث'>suffix</button>
+            <button class='chip' data-query='القر* OR البقرة'>wildcard</button>
+            <button class='chip' data-query='المحدث~1'>fuzzy</button>
+            <button class='chip' data-query='"الحمد لله"'>phrase</button>
+            <button class='chip' data-query='title:الإيمان'>field term</button>
+            <button class='chip' data-query='title:"كتاب الإيمان"'>field phrase</button>
+            <button class='chip' data-query='+title:الإيمان -الاغتيالات'>mixed +/-</button>
+            <button class='chip' data-query='إيمان OR ايمان'>hamza forms</button>
+            <button class='chip' data-query='الرَّحْمَن OR الرحمن OR ١'>diacritics+digit</button>
+          </div>
+
+          <div class='grid'>
+            <label>Field
+              <select id='field'>
+                <option value='both'>both</option>
+                <option value='page'>page</option>
+                <option value='title'>title</option>
+              </select>
+            </label>
+            <label>Limit
+              <input id='limit' type='number' min='1' max='200' value='20' />
+            </label>
+            <label>Suffix Expansions
+              <input id='suffixMax' type='number' min='1' max='2000' value='256' />
+            </label>
+            <label>Wildcard Expansions
+              <input id='wildcardMax' type='number' min='1' max='2000' value='256' />
+            </label>
+            <label>Fuzzy Expansions
+              <input id='fuzzyMax' type='number' min='1' max='2000' value='128' />
+            </label>
+          </div>
+
+          <div class='preset-row'>
+            <label>Option Preset
+              <select id='optionPreset'>
+                <option value='lucene_default'>lucene default</option>
+                <option value='strict_orthography'>strict orthography</option>
+                <option value='no_wildcard_fuzzy'>no wildcard/fuzzy</option>
+                <option value='recall_heavy'>recall heavy</option>
+                <option value='precision_heavy'>precision heavy</option>
+              </select>
+            </label>
+            <button id='applyOptionPreset' class='ghost' type='button'>Apply Options</button>
+          </div>
+          <div class='preset-row'>
+            <label>Scenario Preset
+              <select id='scenarioPreset'>
+                <option value='real_diverse_broad'>real diverse: broad recall</option>
+                <option value='real_feature_strict'>real feature-heavy strict</option>
+                <option value='real_hadith_focus'>real hadith focus</option>
+                <option value='baseline_sample'>baseline sample</option>
+                <option value='tafsir_quran'>tafsir: quran + baqara</option>
+                <option value='hadith_title_phrase'>hadith: title + phrase</option>
+                <option value='fiqh_core_terms'>fiqh: core terms</option>
+                <option value='stem_exclusion'>stem exclusion</option>
+                <option value='strict_hamza_letter'>strict hamza + letter</option>
+                <option value='diacritics_digits'>diacritics + digits</option>
+              </select>
+            </label>
+            <button id='applyScenario' class='ghost' type='button'>Apply Scenario</button>
+          </div>
+          <div class='preset-row'>
+            <label>Tokenizer Args (native mode)
+              <input
+                id='tokenizerArgs'
+                type='text'
+                value=''
+                autocomplete='off'
+                spellcheck='false'
+                placeholder='stem_exclusion كتابها,مصطلح'
+              />
+            </label>
+          </div>
+          <div class='preset-row'>
+            <label>Tokenizer Preset
+              <select id='tokenizerPreset'>
+                <option value='default'>default</option>
+                <option value='stem_exclusion_kitabha'>stem exclusion: كتابها</option>
+                <option value='stem_exclusion_hamza'>stem exclusion: hamza forms</option>
+                <option value='stem_exclusion_quran'>stem exclusion: القرآن</option>
+                <option value='custom'>custom</option>
+              </select>
+            </label>
+            <button id='applyTokenizerPreset' class='ghost' type='button'>Apply Tokenizer Preset</button>
+          </div>
+
+          <div class='toggles'>
+            <label><input id='allowPrefix' type='checkbox' checked /> allow prefix</label>
+            <label><input id='allowSuffix' type='checkbox' checked /> allow suffix</label>
+            <label><input id='allowWildcard' type='checkbox' checked /> allow wildcard</label>
+            <label><input id='allowFuzzy' type='checkbox' checked /> allow fuzzy</label>
+            <label><input id='respectDiacritics' type='checkbox' /> respect diacritics</label>
+            <label><input id='respectHamza' type='checkbox' /> respect hamza forms</label>
+            <label><input id='respectLetter' type='checkbox' /> respect letter forms</label>
+            <label><input id='respectDigit' type='checkbox' /> respect digit forms</label>
+          </div>
+
+          <p id='status' class='status'>Loading custom SQLite WASM with sqlite_tokenizer_ar...</p>
+        </section>
+
+        <section class='card output results'>
+          <h2>Results Comparison</h2>
+          <div class='compare-grid'>
+            <article class='result-pane'>
+              <h3>Relaxed</h3>
+              <p id='relaxedBadge' class='result-badge'>Relaxed: pending</p>
+              <pre id='compiledRelaxed'>{}</pre>
+              <div id='hitsRelaxed'></div>
+            </article>
+            <article class='result-pane'>
+              <h3>Strict</h3>
+              <p id='strictBadge' class='result-badge'>Strict: pending</p>
+              <pre id='compiledStrict'>{}</pre>
+              <div id='hitsStrict'></div>
+            </article>
+          </div>
+          <p id='crossBadge' class='result-badge'>Cross: pending</p>
+        </section>
+      </section>
+
+      <section class='card output'>
+        <h2>Tokenizer Probe</h2>
+        <p class='subtitle'>Inspect tokenization for the active native tokenizer directive.</p>
+        <div class='query-row'>
+          <input id='probeText' type='text' value='قُرْآن وإيمان ١٢٣' autocomplete='off' spellcheck='false' />
+          <button id='probeRun' class='ghost' type='button'>Run Probe</button>
+        </div>
+        <pre id='probeOutput'>{}</pre>
+      </section>
+
+      <section class='card corpus'>
+        <h2>Corpus</h2>
+        <p class='subtitle'>Preloaded sample text. Format per line: <code>book_id|item_id|text</code>.</p>
+        <div class='preset-row'>
+          <label>Corpus Preset
+            <select id='corpusPreset'>
+              <option value='shamela_real_diverse_120'>shamela real diverse (120)</option>
+              <option value='shamela_real_diverse_300'>shamela real diverse (300)</option>
+              <option value='shamela_real_diverse_800'>shamela real diverse (800)</option>
+              <option value='shamela_real_feature_heavy_80'>shamela real feature-heavy (80)</option>
+              <option value='shamela_real_feature_heavy_160'>shamela real feature-heavy (160)</option>
+              <option value='shamela_real_diacritics_120'>shamela real diacritics (120)</option>
+              <option value='shamela_real_hadith_60'>shamela real hadith (60)</option>
+              <option value='shamela_real_fiqh_60'>shamela real fiqh (60)</option>
+              <option value='sample'>sample fixture</option>
+              <option value='shamela_tafsir_mini'>shamela mini tafsir</option>
+              <option value='shamela_hadith_mini'>shamela mini hadith</option>
+              <option value='shamela_fiqh_mini'>shamela mini fiqh</option>
+              <option value='shamela_diacritics_mini'>shamela mini diacritics</option>
+            </select>
+          </label>
+          <button id='applyCorpusPreset' class='ghost' type='button'>Load Preset</button>
+        </div>
+        <div class='corpus-grid'>
+          <label>Page Docs
+            <textarea id='pageCorpus' spellcheck='false'></textarea>
+          </label>
+          <label>Title Docs
+            <textarea id='titleCorpus' spellcheck='false'></textarea>
+          </label>
+        </div>
+        <div class='corpus-actions'>
+          <button id='rebuildCorpus' type='button'>Rebuild Index</button>
+          <button id='resetCorpus' class='ghost' type='button'>Reset Sample</button>
+        </div>
+      </section>
+
+      <section class='card output'>
+        <h2>Explain + Assertions</h2>
+        <pre id='explainOutput'>{}</pre>
+      </section>
+    </main>
+
+    <script type='module' src='./app.js'></script>
+  </body>
+</html>

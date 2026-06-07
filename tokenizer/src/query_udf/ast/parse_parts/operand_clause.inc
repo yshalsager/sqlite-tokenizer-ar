@@ -1,0 +1,5 @@
+#include "operand_clause/common.inc"
+#include "operand_clause/group.inc"
+#include "operand_clause/phrase.inc"
+#include "operand_clause/token.inc"
+#include "operand_clause/entrypoint.inc"

@@ -1,0 +1,9 @@
+{"id":"r1","query":"منصور","field":"page","limit":10}
+{"id":"r2","query":"منصور AND اللغة","field":"page","limit":10}
+{"id":"r3","query":"منصور OR مصور","field":"page","limit":10}
+{"id":"r4","query":"\"العلم نور\"","field":"page","limit":10}
+{"id":"r5","query":"\"طريق العلم\"~3","field":"page","limit":10}
+{"id":"r6","query":"منصور^2 OR مصور","field":"page","limit":10}
+{"id":"r7","query":"\"العلم نور\"^3 OR طريق","field":"page","limit":10}
+{"id":"r8","query":"كتاب","field":"page","limit":10}
+{"id":"r9","query":"كتاب","field":"both","limit":10}

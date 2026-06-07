@@ -1,0 +1,13 @@
+{"id":"split-invalid-group-boost-field","stage":"split_query","query":"title:(المنصور)^1.2.3","error_contains":"invalid group boost"}
+{"id":"split-invalid-group-boost-unscoped","stage":"split_query","query":"(المنصور OR المصور)^1.2.3","error_contains":"invalid group boost"}
+{"id":"split-dangling-group-boost-unscoped","stage":"split_query","query":"(المنصور OR المصور)^","error_contains":"invalid group boost"}
+{"id":"split-unclosed-field-group","stage":"split_query","query":"title:(المنصور OR المصور","error_contains":"unclosed field-group parentheses in query"}
+{"id":"ast-dangling-leading-bool","stage":"parse_query_ast","query":"AND المصور","error_contains":"dangling boolean operator"}
+{"id":"ast-dangling-trailing-bool","stage":"parse_query_ast","query":"المنصور AND","error_contains":"dangling boolean operator"}
+{"id":"ast-consecutive-bool","stage":"parse_query_ast","query":"المنصور AND OR المصور","error_contains":"consecutive boolean operators"}
+{"id":"ast-dangling-not","stage":"parse_query_ast","query":"NOT","error_contains":"dangling NOT modifier"}
+{"id":"ast-dangling-plus","stage":"parse_query_ast","query":"+","error_contains":"dangling + modifier"}
+{"id":"ast-dangling-minus","stage":"parse_query_ast","query":"-","error_contains":"dangling - modifier"}
+{"id":"ast-dangling-modifier-before-bool","stage":"parse_query_ast","query":"+ AND المصور","error_contains":"dangling clause modifier before boolean operator"}
+{"id":"ast-unclosed-group","stage":"parse_query_ast","query":"(المنصور OR المصور","error_contains":"unclosed group in query"}
+{"id":"ast-unmatched-closing","stage":"parse_query_ast","query":") المصور","error_contains":"unmatched closing parenthesis"}

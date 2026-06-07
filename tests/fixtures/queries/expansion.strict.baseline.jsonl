@@ -1,0 +1,18 @@
+{"id":"e1","kind":"expand_suffix","fts_table":"page_fts","suffix":"صور","max_expansions":10,"result":["مصور","منصور"]}
+{"id":"e2","kind":"expand_wildcard","fts_table":"page_fts","pattern":"م*ور","max_expansions":10,"result":["مزور","مصور","منصور"]}
+{"id":"e3","kind":"expand_wildcard","fts_table":"page_fts","pattern":"*صور","max_expansions":10,"result":["مصور","منصور"]}
+{"id":"e4","kind":"expand_wildcard","fts_table":"page_fts","pattern":"منص*","max_expansions":10,"result":["منصور"]}
+{"id":"e5","kind":"expand_fuzzy","fts_table":"page_fts","term":"منصور","max_edits":1,"max_expansions":10,"result":["مصور","منصور"]}
+{"id":"e6","kind":"expand_fuzzy","fts_table":"page_fts","term":"قران","max_edits":1,"max_expansions":10,"result":[]}
+{"id":"e7","kind":"normalize_wildcard","pattern":"*قُر?آن*","result":"*قر?ان*"}
+{"id":"e7a","kind":"wildcard_match","text":"هذا قران كريم","pattern":"قر?ن","result":true}
+{"id":"e7b","kind":"wildcard_match","text":"في كتابها مفيد","pattern":"كتاب*مفيد","result":true}
+{"id":"e7c","kind":"wildcard_match","text":"abc","pattern":"a?d","result":false}
+{"id":"e7d","kind":"levenshtein","left":"منصور","right":"مصور","max_edits":1,"result":1}
+{"id":"e7e","kind":"levenshtein","left":"قرآن","right":"قران","max_edits":1,"result":1}
+{"id":"e7f","kind":"levenshtein","left":"abc","right":"abcdef","max_edits":1,"result":2}
+{"id":"e8","kind":"literal_needs_strict","text":"قُرْآن","options":{"ignore_diacritics":false,"ignore_hamza_forms":true,"ignore_letter_forms":true,"ignore_digit_forms":true},"result":true}
+{"id":"e9","kind":"literal_needs_strict","text":"قران","options":{"ignore_diacritics":false,"ignore_hamza_forms":true,"ignore_letter_forms":true,"ignore_digit_forms":true},"result":false}
+{"id":"e10","kind":"strict_literal_match","raw_text":"قُرْآن كريم","literal_text":"قُرْآن","is_phrase":false,"is_pattern":false,"options":{"ignore_diacritics":false,"ignore_hamza_forms":true,"ignore_letter_forms":true,"ignore_digit_forms":true},"result":true}
+{"id":"e11","kind":"strict_literal_match","raw_text":"قران كريم","literal_text":"قُرْآن","is_phrase":false,"is_pattern":false,"options":{"ignore_diacritics":false,"ignore_hamza_forms":true,"ignore_letter_forms":true,"ignore_digit_forms":true},"result":false}
+{"id":"e12","kind":"strict_literal_match","raw_text":"ايمان قوي","literal_text":"إيمان","is_phrase":false,"is_pattern":false,"options":{"ignore_diacritics":true,"ignore_hamza_forms":false,"ignore_letter_forms":true,"ignore_digit_forms":true},"result":false}

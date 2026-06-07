@@ -1,0 +1,19 @@
+{"id":"c1","query":"المنصور","field":"both"}
+{"id":"c2","query":"المنصور AND المصور","field":"both"}
+{"id":"c3","query":"\"المنصور في اللغة\"","field":"page"}
+{"id":"c4","query":"\"المنصور في اللغة\"~2","field":"page"}
+{"id":"c5","query":"page:المنصور","field":"both"}
+{"id":"c6","query":"title:المنصور","field":"both"}
+{"id":"c7","query":"page:(المنصور OR المصور)","field":"both"}
+{"id":"c8","query":"title:(المنصور OR المصور)^2","field":"both"}
+{"id":"c9","query":"+المنصور -مزور","field":"page"}
+{"id":"c10","query":"(المنصور OR المصور) AND اللغة","field":"page"}
+{"id":"c11","query":"قُرْآن","field":"page"}
+{"id":"c12","query":"قران","field":"page"}
+{"id":"c13","query":"منص*","field":"page"}
+{"id":"c14","query":"*صور","field":"page"}
+{"id":"c15","query":"م*ور","field":"page"}
+{"id":"c16","query":"منصور~1","field":"page"}
+{"id":"c17","query":"title:","field":"both","expect_error":"dangling field scope"}
+{"id":"c18","query":"\"غير مغلق","field":"page","expect_error":"unclosed quote in query"}
+{"id":"c19","query":"title:","field":"both","lenient_parse_errors":true}
