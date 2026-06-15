@@ -89,6 +89,8 @@ Release builds also pack the generated WASM bundle as:
 @yshalsager/sqlite-tokenizer-ar-wasm
 ```
 
+The current package is built from SQLite `version-3.53.2`. The pinned SQLite ref lives in `mise.toml` as `SQLITE_TOKENIZER_AR_SQLITE_REF`.
+
 It exports stable asset URLs:
 
 ```js
