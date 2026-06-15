@@ -5,12 +5,15 @@ __pycache__/
 .build-tools/
 artifacts/
 test-results/
+dist/
+*.tgz
 
 tokenizer/build/
 query_compat/build/
 playground/sqlite-wasm-custom/sqlite3.wasm
 playground/sqlite-wasm-custom/sqlite3.mjs
 playground/sqlite-wasm-custom/sqlite3-worker1.js
+playground/sqlite-wasm-custom/sqlite3-worker1.mjs
 playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
 playground/sqlite-wasm-custom/SHA256SUMS
 

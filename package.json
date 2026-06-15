@@ -1,0 +1,27 @@
+{
+  "name": "@yshalsager/sqlite-tokenizer-ar-wasm",
+  "version": "0.1.0",
+  "type": "module",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sqlite3.wasm": "./dist/sqlite3.wasm",
+    "./sqlite3.mjs": "./dist/sqlite3.mjs",
+    "./sqlite3-worker1.js": "./dist/sqlite3-worker1.js",
+    "./sqlite3-worker1.mjs": "./dist/sqlite3-worker1.mjs",
+    "./sqlite3-opfs-async-proxy.js": "./dist/sqlite3-opfs-async-proxy.js",
+    "./SHA256SUMS": "./dist/SHA256SUMS"
+  },
+  "scripts": {
+    "build": "./scripts/prepare_wasm_package.sh",
+    "prepublishOnly": "./scripts/prepare_wasm_package.sh"
+  }
+}

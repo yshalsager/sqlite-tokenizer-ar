@@ -78,6 +78,28 @@ python3 -m http.server 8080
 
 Open `http://localhost:8080/playground/`.
 
+## WASM npm Package
+
+Release builds also pack the generated WASM bundle as:
+
+```text
+@yshalsager/sqlite-tokenizer-ar-wasm
+```
+
+It exports stable asset URLs:
+
+```js
+import {sqliteWasmUrls} from '@yshalsager/sqlite-tokenizer-ar-wasm'
+```
+
+Install from GitHub Packages with an authenticated npm client:
+
+```bash
+npm install @yshalsager/sqlite-tokenizer-ar-wasm --registry=https://npm.pkg.github.com
+```
+
+For apps that need fixed public paths, copy package `dist/*` to `public/sqlite-wasm/`.
+
 ## Current Scope
 
 The tokenizer is the stable core product. The query compatibility layer is useful but broader: it includes planner, scorer, parser, and snippet helpers that are intentionally outside tokenizer responsibilities.

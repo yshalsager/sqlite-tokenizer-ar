@@ -147,3 +147,10 @@ run = '''
 cd playground
 mise run validate-batch
 '''
+
+[tasks.'wasm:package']
+description = 'Pack the generated SQLite WASM bundle as an npm tarball'
+run = '''
+npm run prepublishOnly
+npm pack
+'''

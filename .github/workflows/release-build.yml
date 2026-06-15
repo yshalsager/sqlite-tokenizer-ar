@@ -22,6 +22,10 @@ on:
         description: 'Run SQLite runtime compatibility smoke matrix'
         required: false
         default: 'true'
+      publish_npm:
+        description: 'Publish the WASM package to GitHub Packages'
+        required: false
+        default: 'false'
 
 concurrency:
   group: release-build-${{ github.ref }}
@@ -29,6 +33,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -168,6 +173,12 @@ jobs:
         shell: bash
         run: ./playground/scripts/verify_custom_wasm.sh
 
+      - name: Pack npm WASM package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mise run wasm:package
+
       - name: Create checksum for tokenizer artifact
         shell: bash
         run: |
@@ -196,6 +207,24 @@ jobs:
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
             playground/sqlite-wasm-custom/SHA256SUMS
 
+      - name: Upload npm WASM package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sqlite-tokenizer-ar-wasm-npm-${{ steps.vars.outputs.release_label }}
+          if-no-files-found: error
+          path: '*.tgz'
+
+      - name: Publish npm WASM package to GitHub Packages
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_npm == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '@yshalsager:registry=https://npm.pkg.github.com' > ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> ~/.npmrc
+          npm publish --registry=https://npm.pkg.github.com --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish release assets (tag runs)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -212,6 +241,7 @@ jobs:
             playground/sqlite-wasm-custom/sqlite3-worker1.mjs
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
             playground/sqlite-wasm-custom/SHA256SUMS
+            *.tgz
 
   sqlite-compat-smoke:
     needs: build
