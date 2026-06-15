@@ -8,6 +8,7 @@ required_files=(
   "sqlite3.wasm"
   "sqlite3.mjs"
   "sqlite3-worker1.js"
+  "sqlite3-worker1.mjs"
   "sqlite3-opfs-async-proxy.js"
   "SHA256SUMS"
 )

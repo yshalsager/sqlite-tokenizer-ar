@@ -154,7 +154,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: playground/sqlite-wasm-custom
-          key: wasm-bundle-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ hashFiles('tokenizer/src/sqlite_tokenizer_ar.c', 'playground/scripts/build_custom_wasm.sh', 'playground/scripts/verify_custom_wasm.sh') }}-${{ steps.vars.outputs.cache_bust }}
+          key: wasm-bundle-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ hashFiles('tokenizer/src/**', 'playground/scripts/build_custom_wasm.sh', 'playground/scripts/verify_custom_wasm.sh') }}-${{ steps.vars.outputs.cache_bust }}
 
       - name: Build custom WASM bundle
         if: steps.cache_wasm.outputs.cache-hit != 'true'
@@ -192,6 +192,7 @@ jobs:
             playground/sqlite-wasm-custom/sqlite3.wasm
             playground/sqlite-wasm-custom/sqlite3.mjs
             playground/sqlite-wasm-custom/sqlite3-worker1.js
+            playground/sqlite-wasm-custom/sqlite3-worker1.mjs
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
             playground/sqlite-wasm-custom/SHA256SUMS
 
@@ -208,6 +209,7 @@ jobs:
             playground/sqlite-wasm-custom/sqlite3.wasm
             playground/sqlite-wasm-custom/sqlite3.mjs
             playground/sqlite-wasm-custom/sqlite3-worker1.js
+            playground/sqlite-wasm-custom/sqlite3-worker1.mjs
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
             playground/sqlite-wasm-custom/SHA256SUMS
 

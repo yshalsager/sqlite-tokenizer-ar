@@ -5,6 +5,7 @@ The playground requires a matched local bundle in this directory:
 - `sqlite-wasm-custom/sqlite3.wasm`
 - `sqlite-wasm-custom/sqlite3.mjs`
 - `sqlite-wasm-custom/sqlite3-worker1.js`
+- `sqlite-wasm-custom/sqlite3-worker1.mjs`
 - `sqlite-wasm-custom/sqlite3-opfs-async-proxy.js`
 - `sqlite-wasm-custom/SHA256SUMS`
 
