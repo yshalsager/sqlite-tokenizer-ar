@@ -161,6 +161,22 @@ Notes:
 - On macOS, `mise run tokenizer:build` prefers Homebrew SQLite headers when available.
 - The extension is built as a loadable module and should not link libsqlite3 directly.
 
+## Android Build
+
+Set `ANDROID_NDK_HOME` and point `SQLITE_SRC_DIR` at a SQLite source checkout, then run:
+
+```bash
+SQLITE_SRC_DIR=/path/to/sqlite-source ANDROID_NDK_HOME=/path/to/android-ndk mise run tokenizer:build-android
+```
+
+Outputs:
+
+- `build/android/arm64-v8a/libsqlite_tokenizer_ar.so`
+- `build/android/armeabi-v7a/libsqlite_tokenizer_ar.so`
+- `build/android/x86_64/libsqlite_tokenizer_ar.so`
+
+The default Android build uses NDK `29.0.14206865`, API `23`, and the ABI list pinned in the root `mise.toml`.
+
 ## Quick Usage (SQLite)
 
 ```sql

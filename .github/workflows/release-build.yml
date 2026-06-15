@@ -68,6 +68,7 @@ jobs:
             sqlite_ref="${SQLITE_TOKENIZER_AR_SQLITE_REF}"
           fi
           compat_refs="${SQLITE_TOKENIZER_AR_SQLITE_COMPAT_REFS:-version-3.40.1 version-3.51.2 ${sqlite_ref}}"
+          android_ndk_version="${SQLITE_TOKENIZER_AR_ANDROID_NDK_VERSION}"
           safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
           sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
 
@@ -86,6 +87,7 @@ jobs:
           echo "sqlite_src_dir=${sqlite_src_dir}" >> "${GITHUB_OUTPUT}"
           echo "cache_bust=${cache_bust}" >> "${GITHUB_OUTPUT}"
           echo "release_label=${release_label}" >> "${GITHUB_OUTPUT}"
+          echo "android_ndk_version=${android_ndk_version}" >> "${GITHUB_OUTPUT}"
           json='['
           sep=''
           for ref in ${compat_refs}; do
@@ -101,6 +103,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config libsqlite3-dev git
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android NDK
+        shell: bash
+        run: sdkmanager "ndk;${{ steps.vars.outputs.android_ndk_version }}"
 
       - name: Cache SQLite source tree
         id: cache_sqlite_source
@@ -197,6 +206,14 @@ jobs:
           set -euo pipefail
           sha256sum tokenizer/build/sqlite_tokenizer_ar.so > tokenizer/build/sqlite_tokenizer_ar.so.sha256
 
+      - name: Build Android tokenizer extensions
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${{ steps.vars.outputs.android_ndk_version }}"
+          SQLITE_SRC_DIR='${{ steps.vars.outputs.sqlite_src_dir }}' mise run tokenizer:build-android
+          (cd tokenizer/build && python3 -m zipfile -c sqlite-tokenizer-ar-android.zip android)
+
       - name: Upload tokenizer artifact
         uses: actions/upload-artifact@v7
         with:
@@ -218,6 +235,13 @@ jobs:
             playground/sqlite-wasm-custom/sqlite3-worker1.mjs
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js
             playground/sqlite-wasm-custom/SHA256SUMS
+
+      - name: Upload Android tokenizer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tokenizer-android-${{ steps.vars.outputs.release_label }}
+          if-no-files-found: error
+          path: tokenizer/build/sqlite-tokenizer-ar-android.zip
 
       - name: Upload npm WASM package artifact
         uses: actions/upload-artifact@v7
@@ -247,6 +271,7 @@ jobs:
           files: |
             tokenizer/build/sqlite_tokenizer_ar.so
             tokenizer/build/sqlite_tokenizer_ar.so.sha256
+            tokenizer/build/sqlite-tokenizer-ar-android.zip
             playground/sqlite-wasm-custom/sqlite3.wasm
             playground/sqlite-wasm-custom/sqlite3.mjs
             playground/sqlite-wasm-custom/sqlite3-worker1.js

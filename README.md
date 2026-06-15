@@ -105,6 +105,18 @@ npm install @yshalsager/sqlite-tokenizer-ar-wasm --registry=https://npm.pkg.gith
 
 For apps that need fixed public paths, copy package `dist/*` to `public/sqlite-wasm/`.
 
+## Android Native Artifacts
+
+Release builds also attach `sqlite-tokenizer-ar-android.zip`, built with Android NDK `29.0.14206865` for:
+
+- `arm64-v8a/libsqlite_tokenizer_ar.so`
+- `armeabi-v7a/libsqlite_tokenizer_ar.so`
+- `x86_64/libsqlite_tokenizer_ar.so`
+
+The Android API level and ABI list are pinned in `mise.toml` as `SQLITE_TOKENIZER_AR_ANDROID_API` and `SQLITE_TOKENIZER_AR_ANDROID_ABIS`.
+
+These are loadable SQLite extensions. The Android app still needs a SQLite runtime with FTS5 and extension loading enabled, or a custom SQLite build that registers the tokenizer directly.
+
 ## Current Scope
 
 The tokenizer is the stable core product. The query compatibility layer is useful but broader: it includes planner, scorer, parser, and snippet helpers that are intentionally outside tokenizer responsibilities.
