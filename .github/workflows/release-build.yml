@@ -9,7 +9,7 @@ on:
       sqlite_ref:
         description: 'SQLite source ref/tag/branch for WASM build'
         required: false
-        default: 'version-3.53.0'
+        default: 'version-3.53.2'
       cache_bust:
         description: 'Optional cache-bust token appended to cache keys'
         required: false
@@ -54,7 +54,7 @@ jobs:
 
           sqlite_ref='${{ github.event.inputs.sqlite_ref }}'
           if [[ -z "${sqlite_ref}" ]]; then
-            sqlite_ref='version-3.53.0'
+            sqlite_ref='version-3.53.2'
           fi
           safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
           sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
@@ -253,7 +253,7 @@ jobs:
         sqlite_ref:
           - version-3.40.1
           - version-3.51.2
-          - version-3.53.0
+          - version-3.53.2
 
     steps:
       - name: Checkout
