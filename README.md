@@ -6,6 +6,9 @@ The core extension exposes an FTS5 tokenizer named `sqlite_tokenizer_ar`. It is 
 
 Reference assets are pinned to Lucene `9.9.0` for reproducibility. The ArabicAnalyzer pipeline was source-diffed against Lucene `10.4.0` on 2026-06-07 with no behavior changes found.
 
+> [!CAUTION]
+> **Disclaimer:** This project was developed with heavy use of AI assistance. It's more like an AI experiment that a stable product. 
+
 ## Repository Layout
 
 - `tokenizer/`: loadable SQLite extension written in C.
