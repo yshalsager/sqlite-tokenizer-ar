@@ -282,7 +282,7 @@ jobs:
 
       - name: Run iOS simulator smoke
         shell: bash
-        run: mise run tokenizer:smoke-ios-simulator
+        run: tokenizer/scripts/smoke_ios_simulator.sh
 
       - name: Upload iOS tokenizer artifact
         uses: actions/upload-artifact@v7

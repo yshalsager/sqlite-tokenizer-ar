@@ -9,6 +9,23 @@ SMOKE_DIR="${BUILD_DIR}/smoke"
 SMOKE_C="${SMOKE_DIR}/ios_smoke.c"
 SMOKE_BIN="${SMOKE_DIR}/ios_smoke"
 
+run_with_timeout() {
+  local seconds="$1"
+  shift
+  "$@" &
+  local pid="$!"
+  (
+    sleep "${seconds}"
+    kill "${pid}" >/dev/null 2>&1 || true
+  ) &
+  local watchdog="$!"
+  wait "${pid}"
+  local rc="$?"
+  kill "${watchdog}" >/dev/null 2>&1 || true
+  wait "${watchdog}" >/dev/null 2>&1 || true
+  return "${rc}"
+}
+
 if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
@@ -74,5 +91,5 @@ udid="$(printf '%s' "${devices_json}" | python3 -c 'import json,sys; d=json.load
   exit 1
 }
 xcrun simctl boot "${udid}" >/dev/null 2>&1 || true
-xcrun simctl bootstatus "${udid}" -b >/dev/null
-xcrun simctl spawn "${udid}" "${SMOKE_BIN}"
+run_with_timeout 180 xcrun simctl bootstatus "${udid}" -b >/dev/null
+run_with_timeout 60 xcrun simctl spawn "${udid}" "${SMOKE_BIN}"
