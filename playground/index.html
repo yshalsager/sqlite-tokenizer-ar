@@ -3,7 +3,7 @@
   <head>
     <meta charset='UTF-8' />
     <meta name='viewport' content='width=device-width, initial-scale=1.0' />
-    <title>Lucene → SQLite WASM Playground</title>
+    <title>sqlite-tokenizer-ar Playground</title>
     <link rel='preconnect' href='https://fonts.googleapis.com' />
     <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin />
     <link href='https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap' rel='stylesheet' />
@@ -12,7 +12,7 @@
   <body>
     <main class='layout'>
       <section class='card hero'>
-        <p class='eyebrow'>Shamela Reboot</p>
+        <p class='eyebrow'>sqlite-tokenizer-ar</p>
         <h1>SQLite WASM Arabic Search Playground</h1>
         <p class='subtitle'>
           In-browser demo for query-compat progress using native `sqlite_tokenizer_ar` on a custom SQLite WASM build: boolean logic, wildcard/fuzzy expansion, strict Arabic form toggles, and deterministic ranking.
@@ -80,9 +80,9 @@
           <div class='preset-row'>
             <label>Scenario Preset
               <select id='scenarioPreset'>
-                <option value='real_diverse_broad'>real diverse: broad recall</option>
-                <option value='real_feature_strict'>real feature-heavy strict</option>
-                <option value='real_hadith_focus'>real hadith focus</option>
+                <option value='fixture_diverse_broad'>fixture diverse: broad recall</option>
+                <option value='fixture_feature_strict'>fixture feature-heavy strict</option>
+                <option value='fixture_hadith_focus'>fixture hadith focus</option>
                 <option value='baseline_sample'>baseline sample</option>
                 <option value='tafsir_quran'>tafsir: quran + baqara</option>
                 <option value='hadith_title_phrase'>hadith: title + phrase</option>
@@ -169,19 +169,16 @@
         <div class='preset-row'>
           <label>Corpus Preset
             <select id='corpusPreset'>
-              <option value='shamela_real_diverse_120'>shamela real diverse (120)</option>
-              <option value='shamela_real_diverse_300'>shamela real diverse (300)</option>
-              <option value='shamela_real_diverse_800'>shamela real diverse (800)</option>
-              <option value='shamela_real_feature_heavy_80'>shamela real feature-heavy (80)</option>
-              <option value='shamela_real_feature_heavy_160'>shamela real feature-heavy (160)</option>
-              <option value='shamela_real_diacritics_120'>shamela real diacritics (120)</option>
-              <option value='shamela_real_hadith_60'>shamela real hadith (60)</option>
-              <option value='shamela_real_fiqh_60'>shamela real fiqh (60)</option>
+              <option value='fixture_diverse_20'>fixture diverse (20)</option>
+              <option value='fixture_feature_heavy_12'>fixture feature-heavy (12)</option>
+              <option value='fixture_diacritics_12'>fixture diacritics (12)</option>
+              <option value='fixture_hadith_8'>fixture hadith (8)</option>
+              <option value='fixture_fiqh_8'>fixture fiqh (8)</option>
               <option value='sample'>sample fixture</option>
-              <option value='shamela_tafsir_mini'>shamela mini tafsir</option>
-              <option value='shamela_hadith_mini'>shamela mini hadith</option>
-              <option value='shamela_fiqh_mini'>shamela mini fiqh</option>
-              <option value='shamela_diacritics_mini'>shamela mini diacritics</option>
+              <option value='fixture_core_mini'>fixture core mini</option>
+              <option value='fixture_complex_mini'>fixture complex mini</option>
+              <option value='fixture_snippet_mini'>fixture snippet mini</option>
+              <option value='fixture_diacritics_mini'>fixture diacritics mini</option>
             </select>
           </label>
           <button id='applyCorpusPreset' class='ghost' type='button'>Load Preset</button>
