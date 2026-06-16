@@ -2,6 +2,10 @@
 
 Browser playground to showcase Arabic query-compat progress on a small sample corpus using a required local custom SQLite WASM bundle (`sqlite3.mjs` + `sqlite3.wasm`) that includes native `sqlite_tokenizer_ar`.
 
+Public demo:
+
+- `https://yshalsager.github.io/sqlite-tokenizer-ar/playground/`
+
 Use [`WASM_VALIDATION_MATRIX.md`](./WASM_VALIDATION_MATRIX.md) to track validated browser/runtime combinations.
 Use [`NATIVE_VALIDATION_RUNBOOK.md`](./NATIVE_VALIDATION_RUNBOOK.md) for native desktop/mobile validation steps (Safari/iOS/Android).
 
@@ -99,6 +103,18 @@ python3 -m http.server 8080
 Open:
 
 - `http://localhost:8080/playground/`
+
+The server must run from the repository root because the playground fetches public fixture JSONL files from `../tests/fixtures/queries/`.
+
+## GitHub Pages
+
+The Pages workflow publishes a static `_site` containing:
+
+- `playground/index.html`, `app.js`, and `style.css`
+- `playground/sqlite-wasm-custom/*` downloaded from the latest release assets
+- `tests/fixtures/queries/*.jsonl`
+
+This keeps Pages deployment cheap and avoids rebuilding SQLite WASM on every playground/docs change.
 
 ## Automated Validation (Playwright)
 

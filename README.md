@@ -72,6 +72,10 @@ The public test lane uses small synthetic fixtures. Full corpus parity runs are 
 
 ## WASM Playground
 
+Public demo:
+
+- `https://yshalsager.github.io/sqlite-tokenizer-ar/playground/`
+
 The playground uses official SQLite WASM built with this extension as an extra init module:
 
 ```bash
@@ -80,6 +84,8 @@ python3 -m http.server 8080
 ```
 
 Open `http://localhost:8080/playground/`.
+
+GitHub Pages publishes the playground from `main` using the latest release WASM assets plus the public fixture JSONL files.
 
 ## WASM npm Package
 

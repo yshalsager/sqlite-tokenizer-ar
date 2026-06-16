@@ -1,0 +1,118 @@
+name: pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'playground/**'
+      - 'tests/fixtures/queries/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+    inputs:
+      wasm_release_tag:
+        description: 'Release tag to download WASM assets from; blank uses latest release'
+        required: false
+        default: ''
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download release WASM assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WASM_RELEASE_TAG: ${{ github.event.inputs.wasm_release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/playground/sqlite-wasm-custom
+          args=(--repo "${GITHUB_REPOSITORY}" --dir _site/playground/sqlite-wasm-custom --clobber)
+          for pattern in \
+            sqlite3.wasm \
+            sqlite3.mjs \
+            sqlite3-worker1.js \
+            sqlite3-worker1.mjs \
+            sqlite3-opfs-async-proxy.js \
+            SHA256SUMS
+          do
+            args+=(--pattern "${pattern}")
+          done
+          if [[ -n "${WASM_RELEASE_TAG}" ]]; then
+            gh release download "${WASM_RELEASE_TAG}" "${args[@]}"
+          else
+            gh release download "${args[@]}"
+          fi
+
+      - name: Build static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/playground _site/tests/fixtures/queries
+          cp playground/index.html playground/app.js playground/style.css _site/playground/
+          cp tests/fixtures/queries/docs.smoke.jsonl \
+             tests/fixtures/queries/docs.complex.jsonl \
+             tests/fixtures/queries/docs.snippets.jsonl \
+             _site/tests/fixtures/queries/
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta http-equiv="refresh" content="0; url=./playground/" />
+              <title>sqlite-tokenizer-ar Playground</title>
+            </head>
+            <body>
+              <p><a href="./playground/">Open sqlite-tokenizer-ar Playground</a></p>
+            </body>
+          </html>
+          HTML
+
+      - name: Validate static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _site/index.html
+          test -s _site/playground/index.html
+          test -s _site/playground/app.js
+          test -s _site/playground/style.css
+          test -s _site/playground/sqlite-wasm-custom/sqlite3.wasm
+          test -s _site/playground/sqlite-wasm-custom/sqlite3.mjs
+          test -s _site/playground/sqlite-wasm-custom/sqlite3-worker1.mjs
+          test -s _site/tests/fixtures/queries/docs.smoke.jsonl
+          grep -q "sqlite-tokenizer-ar" _site/playground/index.html
+          grep -q "fixture_diverse_20" _site/playground/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
