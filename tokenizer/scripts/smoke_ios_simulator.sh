@@ -90,6 +90,6 @@ udid="$(printf '%s' "${devices_json}" | python3 -c 'import json,sys; d=json.load
   echo "error: no available iPhone simulator found" >&2
   exit 1
 }
-xcrun simctl boot "${udid}" >/dev/null 2>&1 || true
+run_with_timeout 60 xcrun simctl boot "${udid}" >/dev/null 2>&1 || true
 run_with_timeout 180 xcrun simctl bootstatus "${udid}" -b >/dev/null
 run_with_timeout 60 xcrun simctl spawn "${udid}" "${SMOKE_BIN}"
