@@ -117,6 +117,29 @@ The Android API level and ABI list are pinned in `mise.toml` as `SQLITE_TOKENIZE
 
 These are loadable SQLite extensions. The Android app still needs a SQLite runtime with FTS5 and extension loading enabled, or a custom SQLite build that registers the tokenizer directly.
 
+## iOS Native Artifact
+
+Release builds attach a static XCFramework:
+
+```text
+sqlite-tokenizer-ar-ios.xcframework.zip
+└── SQLiteTokenizerAr.xcframework
+```
+
+It includes `ios-arm64` and `ios-arm64_x86_64-simulator` slices. Link it with Apple system `libsqlite3`, then register the tokenizer once per SQLite connection before creating/querying FTS tables:
+
+```c
+sqlite_tokenizer_ar_register(db);
+```
+
+Minimal local podspec shape:
+
+```ruby
+s.vendored_frameworks = 'SQLiteTokenizerAr.xcframework'
+s.libraries = 'sqlite3'
+s.ios.deployment_target = '15.0'
+```
+
 ## Current Scope
 
 The tokenizer is the stable core product. The query compatibility layer is useful but broader: it includes planner, scorer, parser, and snippet helpers that are intentionally outside tokenizer responsibilities.

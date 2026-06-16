@@ -68,3 +68,9 @@ int sqlite3_sqlitetokenizerar_init(sqlite3 *db, char **pzErrMsg, const sqlite3_a
 int sqlite3_extension_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi) {
   return sqlite3_sqlitetokenizerar_init(db, pzErrMsg, pApi);
 }
+
+#ifdef SQLITE_CORE
+int sqlite_tokenizer_ar_register(sqlite3 *db) {
+  return sqlite3_sqlitetokenizerar_init(db, NULL, NULL);
+}
+#endif

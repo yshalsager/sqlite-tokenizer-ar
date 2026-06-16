@@ -9,6 +9,7 @@ SQLITE_TOKENIZER_AR_SQLITE_COMPAT_REFS = 'version-3.40.1 version-3.51.2 version-
 SQLITE_TOKENIZER_AR_ANDROID_NDK_VERSION = '29.0.14206865'
 SQLITE_TOKENIZER_AR_ANDROID_API = '23'
 SQLITE_TOKENIZER_AR_ANDROID_ABIS = 'arm64-v8a armeabi-v7a x86_64'
+SQLITE_TOKENIZER_AR_IOS_DEPLOYMENT_TARGET = '15.0'
 
 [tasks.build]
 description = 'Build the native tokenizer extension and validate query compatibility entrypoints'
@@ -55,6 +56,19 @@ $cc_bin $cflags $sqlite_cflags src/sqlite_tokenizer_ar.c $ldflags $ldlibs -o bui
 description = 'Build Android tokenizer extensions with the Android NDK'
 run = '''
 tokenizer/scripts/build_android.sh
+'''
+
+[tasks.'tokenizer:build-ios']
+description = 'Build tokenizer/build/ios/sqlite-tokenizer-ar-ios.xcframework.zip'
+run = '''
+tokenizer/scripts/build_ios_xcframework.sh
+'''
+
+[tasks.'tokenizer:smoke-ios-simulator']
+description = 'Run the iOS simulator tokenizer smoke test'
+depends = ['tokenizer:build-ios']
+run = '''
+tokenizer/scripts/smoke_ios_simulator.sh
 '''
 
 [tasks.'tokenizer:verify-assets']

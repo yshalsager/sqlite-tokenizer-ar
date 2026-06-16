@@ -177,6 +177,35 @@ Outputs:
 
 The default Android build uses NDK `29.0.14206865`, API `23`, and the ABI list pinned in the root `mise.toml`.
 
+## iOS Build
+
+Build the static XCFramework:
+
+```bash
+mise run tokenizer:build-ios
+```
+
+Output:
+
+```text
+build/ios/sqlite-tokenizer-ar-ios.xcframework.zip
+└── SQLiteTokenizerAr.xcframework
+```
+
+For iOS apps, link the XCFramework and `libsqlite3`, then call this once after every `sqlite3_open*` and before creating/querying FTS tables:
+
+```c
+sqlite_tokenizer_ar_register(db);
+```
+
+The iOS artifact does not use `sqlite3_auto_extension`; Apple deprecates that API on iOS because process-global auto extensions are not supported.
+
+Run the simulator smoke check with:
+
+```bash
+mise run tokenizer:smoke-ios-simulator
+```
+
 ## Quick Usage (SQLite)
 
 ```sql
@@ -533,11 +562,11 @@ print(rows)
 
 ### C/C++ app startup (auto-register)
 
-If the extension code is linked into your binary, register once at process startup:
+If the extension code is linked into your binary, register each SQLite connection after opening it:
 
 ```c
-extern int sqlite3_sqlitetokenizerar_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi);
-sqlite3_auto_extension((void (*)(void))sqlite3_sqlitetokenizerar_init);
+#include "SQLiteTokenizerAr.h"
+sqlite_tokenizer_ar_register(db);
 ```
 
 ### SQLite WASM build
