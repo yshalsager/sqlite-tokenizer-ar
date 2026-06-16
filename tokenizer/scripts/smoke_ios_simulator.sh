@@ -19,8 +19,10 @@ run_with_timeout() {
     kill "${pid}" >/dev/null 2>&1 || true
   ) &
   local watchdog="$!"
+  set +e
   wait "${pid}"
   local rc="$?"
+  set -e
   kill "${watchdog}" >/dev/null 2>&1 || true
   wait "${watchdog}" >/dev/null 2>&1 || true
   return "${rc}"
