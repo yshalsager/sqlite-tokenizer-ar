@@ -117,6 +117,44 @@ def main() -> None:
             0,
             'strict sensitivity negative',
         )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('من يريد برجوعه فيها', '["من","يريد"]', 'all', 8),
+            '\ue000من\ue001 \ue000يريد\ue001 برجوعه فيها',
+            'highlight normalized all terms',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال برجوعه فيها ثم رجع', '["برجوعه","فيها"]', 'phrase', 8),
+            'قال \ue000برجوعه فيها\ue001 ثم رجع',
+            'highlight normalized phrase',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('اللغة العربيّة مفيدة', '["العربية"]', 'all', 8),
+            'اللغة \ue000العربيّة\ue001 مفيدة',
+            'highlight normalized diacritics',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('من يريد', '["من","غائب"]', 'all', 8),
+            None,
+            'highlight normalized all missing term',
+        )
+        try:
+            conn.execute(
+                "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+                ('من يريد', '[] trailing', 'any', 8),
+            ).fetchone()
+        except sqlite3.OperationalError as exc:
+            if 'invalid terms_json' not in str(exc):
+                raise
+        else:
+            raise SystemExit('error: highlight normalized invalid empty JSON suffix accepted')
 
         conn.execute(
             "CREATE VIRTUAL TABLE t_excl USING fts5(content, tokenize='sqlite_tokenizer_ar stem_exclusion كتابها')"

@@ -14,6 +14,7 @@ static const UdfDef kCoreUdfs[] = {
     {"sqlite_tokenizer_ar_lucene_term_score", 6, udf_sqlite_tokenizer_ar_lucene_term_score},
     {"sqlite_tokenizer_ar_has_sensitive_forms", 5, udf_sqlite_tokenizer_ar_has_sensitive_forms},
     {"sqlite_tokenizer_ar_find_all_normalized_match_spans_json", -1, udf_sqlite_tokenizer_ar_find_all_normalized_match_spans_json},
+    {"sqlite_tokenizer_ar_highlight_normalized_matches", 6, udf_sqlite_tokenizer_ar_highlight_normalized_matches},
     {"sqlite_tokenizer_ar_snap_snippet_window_json", -1, udf_sqlite_tokenizer_ar_snap_snippet_window_json},
     {"sqlite_tokenizer_ar_select_non_overlapping_spans_csv", 1, udf_sqlite_tokenizer_ar_select_non_overlapping_spans_csv},
     {"sqlite_tokenizer_ar_render_snippet_with_highlights", 4, udf_sqlite_tokenizer_ar_render_snippet_with_highlights},

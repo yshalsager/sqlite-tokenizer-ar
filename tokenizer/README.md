@@ -35,6 +35,7 @@ After loading the extension, SQLite gets:
 - UDF: `sqlite_tokenizer_ar_parse_scoped_token_json(token)`
 - UDF: `sqlite_tokenizer_ar_parse_boosted_token_clause_json(token, runtime_field)`
 - UDF: `sqlite_tokenizer_ar_find_all_normalized_match_spans_json(text, term, limit=8)`
+- UDF: `sqlite_tokenizer_ar_highlight_normalized_matches(text, terms_json, mode, start_marker, end_marker, limit)`
 - UDF: `sqlite_tokenizer_ar_snap_snippet_window_json(text, start, end, scan=12)`
 - UDF: `sqlite_tokenizer_ar_select_non_overlapping_spans_csv(spans_csv)`
 - UDF: `sqlite_tokenizer_ar_render_snippet_with_highlights(text, start, end, spans_csv)`
@@ -358,6 +359,42 @@ SELECT sqlite_tokenizer_ar_has_sensitive_forms('قُرْآن ١٢٣ مدرسة',
 
 SELECT sqlite_tokenizer_ar_has_sensitive_forms('كتاب مفيد', 1, 1, 1, 1);
 -- 0
+```
+
+#### `sqlite_tokenizer_ar_highlight_normalized_matches(...)`
+
+Highlights original text ranges found by normalized Arabic matching, without cloning tokenizer logic in application code.
+
+Signature:
+
+```text
+sqlite_tokenizer_ar_highlight_normalized_matches(
+  text,
+  terms_json,
+  mode,
+  start_marker,
+  end_marker,
+  limit
+)
+```
+
+- `terms_json` is a JSON string array parsed by the extension; JSON1 is not required.
+- `mode='any'` highlights any matching term.
+- `mode='all'` returns `NULL` unless every non-empty term has at least one match, then highlights matched raw terms.
+- `mode='phrase'` treats one item as the raw phrase, or joins multiple non-empty items with one ASCII space.
+- Overlaps are sorted by start ascending, then length descending; the first selected non-overlapping span wins.
+- Matching uses relaxed normalization for diacritics, hamza forms, letter forms, digit forms, and lowercase, while output preserves original text.
+
+```sql
+SELECT sqlite_tokenizer_ar_highlight_normalized_matches(
+  'اللغة العربيّة مفيدة',
+  '["العربية"]',
+  'all',
+  '<mark>',
+  '</mark>',
+  8
+);
+-- اللغة <mark>العربيّة</mark> مفيدة
 ```
 
 ### 6) `sqlite_tokenizer_ar_wildcard_match(text, pattern)`
