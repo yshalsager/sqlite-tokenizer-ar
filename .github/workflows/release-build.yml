@@ -199,6 +199,7 @@ jobs:
         run: |
           set -euo pipefail
           mise run wasm:package
+          npm run smoke:node
 
       - name: Create checksum for tokenizer artifact
         shell: bash
@@ -231,6 +232,7 @@ jobs:
           path: |
             playground/sqlite-wasm-custom/sqlite3.wasm
             playground/sqlite-wasm-custom/sqlite3.mjs
+            playground/sqlite-wasm-custom/sqlite3-node.mjs
             playground/sqlite-wasm-custom/sqlite3-worker1.js
             playground/sqlite-wasm-custom/sqlite3-worker1.mjs
             playground/sqlite-wasm-custom/sqlite3-opfs-async-proxy.js

@@ -103,6 +103,12 @@ It exports stable asset URLs:
 import {sqliteWasmUrls} from '@yshalsager/sqlite-tokenizer-ar-wasm'
 ```
 
+For Node/Vitest:
+
+```js
+import sqlite3InitModule from '@yshalsager/sqlite-tokenizer-ar-wasm/node'
+```
+
 Install from GitHub Packages with an authenticated npm client:
 
 ```bash

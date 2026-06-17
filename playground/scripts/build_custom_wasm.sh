@@ -60,22 +60,24 @@ echo "[4/6] building official sqlite3 WASM bundle with custom extra init"
 echo "[4a/6] ensuring sqlite amalgamation is generated (sqlite3.c/sqlite3.h)"
 (cd "$SQLITE_SRC_DIR" && make -j2 sqlite3.c)
 (cd "$WASM_DIR" && make -j2)
+(cd "$WASM_DIR" && make jswasm/sqlite3-node.mjs)
 
 OUTPUT_DIR="$PLAYGROUND_DIR/sqlite-wasm-custom"
 mkdir -p "$OUTPUT_DIR"
-if [[ ! -f "$WASM_DIR/jswasm/sqlite3.wasm" || ! -f "$WASM_DIR/jswasm/sqlite3.mjs" ]]; then
-  echo "error: build finished but jswasm/sqlite3.wasm or jswasm/sqlite3.mjs was not found"
+if [[ ! -f "$WASM_DIR/jswasm/sqlite3.wasm" || ! -f "$WASM_DIR/jswasm/sqlite3.mjs" || ! -f "$WASM_DIR/jswasm/sqlite3-node.mjs" ]]; then
+  echo "error: build finished but jswasm/sqlite3.wasm, jswasm/sqlite3.mjs, or jswasm/sqlite3-node.mjs was not found"
   exit 1
 fi
 
 cp "$WASM_DIR/jswasm/sqlite3.wasm" "$OUTPUT_DIR/sqlite3.wasm"
 cp "$WASM_DIR/jswasm/sqlite3.mjs" "$OUTPUT_DIR/sqlite3.mjs"
+cp "$WASM_DIR/jswasm/sqlite3-node.mjs" "$OUTPUT_DIR/sqlite3-node.mjs"
 cp "$WASM_DIR/jswasm/sqlite3-worker1.js" "$OUTPUT_DIR/sqlite3-worker1.js"
 cp "$WASM_DIR/jswasm/sqlite3-worker1.mjs" "$OUTPUT_DIR/sqlite3-worker1.mjs"
 cp "$WASM_DIR/jswasm/sqlite3-opfs-async-proxy.js" "$OUTPUT_DIR/sqlite3-opfs-async-proxy.js"
-(cd "$OUTPUT_DIR" && shasum -a 256 sqlite3.wasm sqlite3.mjs sqlite3-worker1.js sqlite3-worker1.mjs sqlite3-opfs-async-proxy.js > SHA256SUMS)
+(cd "$OUTPUT_DIR" && shasum -a 256 sqlite3.wasm sqlite3.mjs sqlite3-node.mjs sqlite3-worker1.js sqlite3-worker1.mjs sqlite3-opfs-async-proxy.js > SHA256SUMS)
 
 echo "[5/6] wrote $OUTPUT_DIR/sqlite3.wasm"
-echo "[6/6] wrote matched loader files: sqlite3.mjs, sqlite3-worker1.js, sqlite3-worker1.mjs, sqlite3-opfs-async-proxy.js"
+echo "[6/6] wrote matched loader files: sqlite3.mjs, sqlite3-node.mjs, sqlite3-worker1.js, sqlite3-worker1.mjs, sqlite3-opfs-async-proxy.js"
 echo "      wrote integrity manifest: $OUTPUT_DIR/SHA256SUMS"
 echo "done: playground now uses the local matched sqlite3.mjs + sqlite3.wasm pair with native sqlite_tokenizer_ar"

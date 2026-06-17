@@ -8,6 +8,7 @@ DIST_DIR="$ROOT_DIR/dist"
 required=(
   sqlite3.wasm
   sqlite3.mjs
+  sqlite3-node.mjs
   sqlite3-worker1.js
   sqlite3-worker1.mjs
   sqlite3-opfs-async-proxy.js
@@ -30,6 +31,7 @@ done
 cat > "$DIST_DIR/index.js" <<'JS'
 export const sqliteWasmUrls = {
   module: new URL('./sqlite3.mjs', import.meta.url).href,
+  nodeModule: new URL('./sqlite3-node.mjs', import.meta.url).href,
   wasm: new URL('./sqlite3.wasm', import.meta.url).href,
   worker: new URL('./sqlite3-worker1.mjs', import.meta.url).href,
   workerClassic: new URL('./sqlite3-worker1.js', import.meta.url).href,
@@ -41,6 +43,7 @@ JS
 cat > "$DIST_DIR/index.d.ts" <<'TS'
 export declare const sqliteWasmUrls: {
   module: string
+  nodeModule: string
   wasm: string
   worker: string
   workerClassic: string

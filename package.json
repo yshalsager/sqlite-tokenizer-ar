@@ -13,8 +13,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./node": "./dist/sqlite3-node.mjs",
     "./sqlite3.wasm": "./dist/sqlite3.wasm",
     "./sqlite3.mjs": "./dist/sqlite3.mjs",
+    "./sqlite3-node.mjs": "./dist/sqlite3-node.mjs",
     "./sqlite3-worker1.js": "./dist/sqlite3-worker1.js",
     "./sqlite3-worker1.mjs": "./dist/sqlite3-worker1.mjs",
     "./sqlite3-opfs-async-proxy.js": "./dist/sqlite3-opfs-async-proxy.js",
@@ -22,6 +24,7 @@
   },
   "scripts": {
     "build": "./scripts/prepare_wasm_package.sh",
+    "smoke:node": "node --no-warnings scripts/smoke_node_wasm_package.mjs",
     "prepublishOnly": "./scripts/prepare_wasm_package.sh"
   }
 }

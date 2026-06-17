@@ -69,6 +69,7 @@ This script:
 - outputs matched files in `playground/sqlite-wasm-custom/`:
   - `sqlite3.wasm`
   - `sqlite3.mjs`
+  - `sqlite3-node.mjs`
   - `sqlite3-worker1.js`
   - `sqlite3-worker1.mjs`
   - `sqlite3-opfs-async-proxy.js`
