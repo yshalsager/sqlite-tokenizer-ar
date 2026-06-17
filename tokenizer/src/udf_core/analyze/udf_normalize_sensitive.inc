@@ -1869,8 +1869,8 @@ static void udf_sqlite_tokenizer_ar_highlight_normalized_matches(sqlite3_context
 }
 
 static void udf_sqlite_tokenizer_ar_highlight_analyzed_matches(sqlite3_context *context, int argc, sqlite3_value **argv) {
-  if (argc != 6) {
-    sqlite3_result_error(context, "sqlite_tokenizer_ar_highlight_analyzed_matches expects 6 arguments", -1);
+  if (argc < 6 || argc > 7) {
+    sqlite3_result_error(context, "sqlite_tokenizer_ar_highlight_analyzed_matches expects 6..7 arguments", -1);
     return;
   }
   if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL || sqlite3_value_type(argv[2]) == SQLITE_NULL) {
@@ -1888,6 +1888,8 @@ static void udf_sqlite_tokenizer_ar_highlight_analyzed_matches(sqlite3_context *
   const char *endMarker = sqlite3_value_type(argv[4]) == SQLITE_NULL ? "" : (const char *)sqlite3_value_text(argv[4]);
   int nEndMarker = sqlite3_value_type(argv[4]) == SQLITE_NULL ? 0 : sqlite3_value_bytes(argv[4]);
   int limit = sqlite3_value_int(argv[5]);
+  const char *rawTermsJson = (argc >= 7 && sqlite3_value_type(argv[6]) != SQLITE_NULL) ? (const char *)sqlite3_value_text(argv[6]) : NULL;
+  int nRawTermsJson = (argc >= 7 && sqlite3_value_type(argv[6]) != SQLITE_NULL) ? sqlite3_value_bytes(argv[6]) : 0;
   if (text == NULL || termsJson == NULL || mode == NULL || nText <= 0 || nTermsJson <= 0 || limit <= 0) {
     sqlite3_result_null(context);
     return;
@@ -1919,6 +1921,76 @@ static void udf_sqlite_tokenizer_ar_highlight_analyzed_matches(sqlite3_context *
     sqlite3_free(candidates);
     sqlite3_result_error_nomem(context);
     return;
+  }
+  if (rawTermsJson != NULL && nRawTermsJson > 0) {
+    JsonStringArray rawTerms;
+    rc = parse_json_string_array(rawTermsJson, nRawTermsJson, &rawTerms);
+    if (rc == SQLITE_NOMEM) {
+      sqlite3_free(candidates);
+      sqlite3_result_error_nomem(context);
+      return;
+    }
+    if (rc != SQLITE_OK) {
+      sqlite3_free(candidates);
+      sqlite3_result_error(context, "invalid raw_terms_json: expected JSON string array", -1);
+      return;
+    }
+    int rawMatches = 0;
+    if (strcmp(mode, "phrase") == 0) {
+      char *phrase = NULL;
+      int nPhrase = 0;
+      if (rawTerms.count == 1 && rawTerms.lens[0] > 0) {
+        int phraseCap = 0;
+        if (ar_checked_int_sum(rawTerms.lens[0], 1, &phraseCap) != SQLITE_OK) {
+          json_string_array_free(&rawTerms);
+          sqlite3_free(candidates);
+          sqlite3_result_error_toobig(context);
+          return;
+        }
+        phrase = sqlite3_malloc64((sqlite3_uint64)phraseCap);
+        if (phrase == NULL) {
+          json_string_array_free(&rawTerms);
+          sqlite3_free(candidates);
+          sqlite3_result_error_nomem(context);
+          return;
+        }
+        memcpy(phrase, rawTerms.items[0], (size_t)rawTerms.lens[0]);
+        phrase[rawTerms.lens[0]] = '\0';
+        nPhrase = rawTerms.lens[0];
+      } else {
+        rc = join_json_terms_with_space(&rawTerms, &phrase, &nPhrase);
+      }
+      if (rc == SQLITE_OK && phrase != NULL && nPhrase > 0) {
+        rc = collect_normalized_match_spans(text, nText, phrase, nPhrase, limit, &candidates, &candidateCount, &candidateCap, &rawMatches);
+      }
+      sqlite3_free(phrase);
+    } else if (strcmp(mode, "any") == 0 || strcmp(mode, "all") == 0) {
+      for (int i = 0; rc == SQLITE_OK && i < rawTerms.count; i++) {
+        if (rawTerms.lens[i] <= 0) {
+          continue;
+        }
+        int termMatches = 0;
+        rc = collect_normalized_match_spans(
+            text, nText, rawTerms.items[i], rawTerms.lens[i], limit, &candidates, &candidateCount, &candidateCap, &termMatches);
+        rawMatches += termMatches;
+      }
+    } else {
+      rc = SQLITE_MISUSE;
+    }
+    json_string_array_free(&rawTerms);
+    if (rc == SQLITE_MISUSE) {
+      sqlite3_free(candidates);
+      sqlite3_result_error(context, "mode must be one of: any, all, phrase", -1);
+      return;
+    }
+    if (rc != SQLITE_OK) {
+      sqlite3_free(candidates);
+      sqlite3_result_error_nomem(context);
+      return;
+    }
+    if (rawMatches > 0) {
+      requirementsMet = 1;
+    }
   }
   if (!requirementsMet || candidateCount == 0) {
     sqlite3_free(candidates);

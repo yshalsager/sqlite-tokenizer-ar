@@ -37,7 +37,7 @@ After loading the extension, SQLite gets:
 - UDF: `sqlite_tokenizer_ar_find_all_normalized_match_spans_json(text, term, limit=8)`
 - UDF: `sqlite_tokenizer_ar_highlight_normalized_matches(text, terms_json, mode, start_marker, end_marker, limit)`
 - UDF: `sqlite_tokenizer_ar_find_all_analyzed_match_spans_json(text, terms_json, mode, limit=8)`
-- UDF: `sqlite_tokenizer_ar_highlight_analyzed_matches(text, terms_json, mode, start_marker, end_marker, limit)`
+- UDF: `sqlite_tokenizer_ar_highlight_analyzed_matches(text, terms_json, mode, start_marker, end_marker, limit, raw_terms_json=NULL)`
 - UDF: `sqlite_tokenizer_ar_snap_snippet_window_json(text, start, end, scan=12)`
 - UDF: `sqlite_tokenizer_ar_select_non_overlapping_spans_csv(spans_csv)`
 - UDF: `sqlite_tokenizer_ar_render_snippet_with_highlights(text, start, end, spans_csv)`
@@ -431,7 +431,7 @@ SELECT sqlite_tokenizer_ar_highlight_normalized_matches(
 
 #### `sqlite_tokenizer_ar_highlight_analyzed_matches(...)`
 
-Highlights full original source tokens whose analyzer output matches already-analyzed terms. `terms_json` must come from `sqlite_tokenizer_ar_analyze_json(query)` or equivalent analyzer output; this UDF does not parse MATCH syntax or raw user queries.
+Highlights full original source tokens whose analyzer output matches already-analyzed terms. `terms_json` must come from `sqlite_tokenizer_ar_analyze_json(query)` or equivalent analyzer output; this UDF does not parse MATCH syntax or raw user queries. Optional `raw_terms_json` adds relaxed raw-term display highlights for analyzer-dropped terms such as stopwords.
 
 ```sql
 SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(
@@ -453,6 +453,17 @@ SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(
   8
 );
 -- قال الإمام <mark>﵀</mark>
+
+SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(
+  'قال برجوعه فيها ثم رجع',
+  sqlite_tokenizer_ar_analyze_json('برجوعه فيها'),
+  'all',
+  '<mark>',
+  '</mark>',
+  8,
+  '["برجوعه","فيها"]'
+);
+-- قال <mark>برجوعه</mark> <mark>فيها</mark> ثم رجع
 ```
 
 ### 6) `sqlite_tokenizer_ar_wildcard_match(text, pattern)`

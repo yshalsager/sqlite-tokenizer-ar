@@ -226,6 +226,13 @@ def main() -> None:
         )
         assert_value(
             conn,
+            "SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(?, sqlite_tokenizer_ar_analyze_json(?), ?, char(0xE000), char(0xE001), ?, ?)",
+            ('قال برجوعه فيها ثم رجع', 'برجوعه فيها', 'all', 8, '["برجوعه","فيها"]'),
+            'قال \ue000برجوعه\ue001 \ue000فيها\ue001 ثم رجع',
+            'highlight analyzed with raw stopword display term',
+        )
+        assert_value(
+            conn,
             "SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
             ('قال الإمام ﵀', '["رحم","له"]', 'all', 8),
             'قال الإمام \ue000﵀\ue001',
