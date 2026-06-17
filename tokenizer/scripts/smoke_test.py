@@ -10,6 +10,20 @@ def assert_count(conn: sqlite3.Connection, query: str, expected: int) -> None:
         raise SystemExit(f"error: query={query!r} expected={expected} got={actual}")
 
 
+def assert_table_count(conn: sqlite3.Connection, table: str, query: str, expected: int) -> None:
+    row = conn.execute(f'SELECT count(*) FROM {table} WHERE {table} MATCH ?', (query,)).fetchone()
+    actual = 0 if row is None else int(row[0])
+    if actual != expected:
+        raise SystemExit(f"error: table={table} query={query!r} expected={expected} got={actual}")
+
+
+def assert_table_row_match(conn: sqlite3.Connection, table: str, rowid: int, query: str) -> None:
+    row = conn.execute(f'SELECT count(*) FROM {table} WHERE rowid = ? AND {table} MATCH ?', (rowid, query)).fetchone()
+    actual = 0 if row is None else int(row[0])
+    if actual != 1:
+        raise SystemExit(f"error: table={table} rowid={rowid} query={query!r} expected_match=1 got={actual}")
+
+
 def assert_term_doc_count(conn: sqlite3.Connection, term: str, expected: int) -> None:
     row = conn.execute('SELECT count(*) FROM tv WHERE term = ?', (term,)).fetchone()
     actual = 0 if row is None else int(row[0])
@@ -63,6 +77,64 @@ def main() -> None:
         assert_count(conn, 'في', 0)
         assert_count(conn, 'كتاب', 2)
         assert_count(conn, '___', 0)
+
+        conn.execute("CREATE VIRTUAL TABLE t_honorific_off USING fts5(content, tokenize='sqlite_tokenizer_ar')")
+        conn.execute("INSERT INTO t_honorific_off(content) VALUES ('قال ﵀')")
+        assert_table_count(conn, 't_honorific_off', 'رحمه', 0)
+
+        honorific_cases = [
+            ('﯃', 'جل وعلا'),
+            ('﯄', 'دامت بركاتهم'),
+            ('﯅', 'رحمة الله تعالى عليه'),
+            ('﯆', 'رحمة الله عليهم'),
+            ('﯇', 'رحمة الله عليهما'),
+            ('﯈', 'رحمهم الله تعالى'),
+            ('﯉', 'رحمهما الله'),
+            ('﯊', 'رحمهما الله تعالى'),
+            ('﯋', 'رضي الله تعالى عنهم'),
+            ('﯌', 'حفظه الله'),
+            ('﯍', 'حفظه الله تعالى'),
+            ('﯎', 'حفظهم الله تعالى'),
+            ('﯏', 'حفظهما الله تعالى'),
+            ('﯐', 'صلى الله تعالى عليه وسلم'),
+            ('﯑', 'عجل الله فرجه الشريف'),
+            ('﯒', 'عليه الرحمة'),
+            ('﵀', 'رحمه الله'),
+            ('﵁', 'رضي الله عنه'),
+            ('﵂', 'رضي الله عنها'),
+            ('﵃', 'رضي الله عنهم'),
+            ('﵄', 'رضي الله عنهما'),
+            ('﵅', 'رضي الله عنهن'),
+            ('﵆', 'صلى الله عليه وآله'),
+            ('﵇', 'عليه السلام'),
+            ('﵈', 'عليهم السلام'),
+            ('﵉', 'عليهما السلام'),
+            ('﵊', 'عليه الصلاة والسلام'),
+            ('﵋', 'قدس سره'),
+            ('﵌', 'صلى الله عليه وآله وسلم'),
+            ('﵍', 'عليها السلام'),
+            ('﵎', 'تبارك وتعالى'),
+            ('﵏', 'رحمهم الله'),
+            ('﶐', 'رحمة الله عليه'),
+            ('﶑', 'رحمة الله عليها'),
+            ('﷈', 'رحمه الله تعالى'),
+            ('﷉', 'رضي الله تعالى عنه'),
+            ('﷊', 'رضي الله تعالى عنها'),
+            ('﷋', 'رضي الله تعالى عنهما'),
+            ('﷌', 'صلى الله عليه وعلى آله وسلم'),
+            ('﷍', 'عجل الله تعالى فرجه الشريف'),
+            ('﷎', 'كرم الله وجهه'),
+            ('﷏', 'سلامه علينا'),
+            ('ﷺ', 'صلى الله عليه وسلم'),
+            ('ﷻ', 'جل جلاله'),
+            ('﷽', 'بسم الله الرحمن الرحيم'),
+            ('﷾', 'سبحانه وتعالى'),
+            ('﷿', 'عز وجل'),
+        ]
+        conn.execute("CREATE VIRTUAL TABLE t_honorific_on USING fts5(content, tokenize='sqlite_tokenizer_ar honorific_expansions')")
+        for rowid, (glyph, phrase) in enumerate(honorific_cases, 1):
+            conn.execute('INSERT INTO t_honorific_on(rowid, content) VALUES (?, ?)', (rowid, f'قال {glyph}'))
+            assert_table_row_match(conn, 't_honorific_on', rowid, f'"{phrase}"')
 
         conn.execute("CREATE VIRTUAL TABLE tv USING fts5vocab(t, 'row')")
         assert_term_doc_count(conn, 'الكتروني:ahmd577', 1)
@@ -137,6 +209,27 @@ def main() -> None:
             ('اللغة العربيّة مفيدة', '["العربية"]', 'all', 8),
             'اللغة \ue000العربيّة\ue001 مفيدة',
             'highlight normalized diacritics',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال الإمام ﵀ في كتابه', '["رحمه الله"]', 'phrase', 8),
+            'قال الإمام \ue000﵀\ue001 في كتابه',
+            'highlight normalized honorific phrase glyph',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال الإمام ﷿', '["وجل"]', 'any', 8),
+            'قال الإمام \ue000﷿\ue001',
+            'highlight normalized honorific any glyph',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال الإمام ﵀ في كتابه', '["الإمام","رحمه"]', 'all', 8),
+            'قال \ue000الإمام\ue001 \ue000﵀\ue001 في كتابه',
+            'highlight normalized honorific all glyph',
         )
         assert_value(
             conn,

@@ -82,6 +82,7 @@ Core source is now split into focused modules under `tokenizer/src`:
 - `sqlite_tokenizer_ar_token_utils.inc`: aggregator for tokenizer text/CSV/buffer utility helpers
 - `token_utils/csv_options.inc`: stem exclusion + custom stopword CSV parsing helpers
 - `token_utils/utf8_transform.inc`: aggregator for UTF-8 transform helpers
+- `token_utils/honorific_expansions.inc`: optional honorific private-use glyph phrase expansion map
 - `token_utils/utf8/codec.inc`: UTF-8 decode/encode helpers
 - `token_utils/utf8/char_classes.inc`: Arabic normalization and token-class helpers
 - `token_utils/utf8/transformers.inc`: token transform and utility helpers
@@ -253,16 +254,19 @@ Supported optional arguments:
 - `stem_exclusion`
 - `stopwords`
 - `disable_stopwords`
+- `honorific_expansions`
 
 Accepted forms:
 
 - `tokenize='sqlite_tokenizer_ar stem_exclusion كتابها stem_exclusion مصطلح'`
+- `tokenize='sqlite_tokenizer_ar honorific_expansions'`
 
 Behavior:
 
 - Excluded terms skip stemming only.
 - Stem-exclusion terms are normalized before comparison, so surface forms such as `مدرسة` match the normalized pre-stem token `مدرسه`.
 - All other pipeline stages still apply.
+- `honorific_expansions` is off by default. When enabled, it expands a small built-in honorific private-use glyph map before token segmentation, then runs the normal analyzer pipeline on the expanded phrase.
 - Unknown tokenizer arguments are rejected so option typos fail during virtual-table creation.
 
 Example:
@@ -288,6 +292,30 @@ Accepted forms:
 
 - `tokenize='sqlite_tokenizer_ar stopwords في stopwords من stopwords على'`
 - `tokenize='sqlite_tokenizer_ar disable_stopwords'`
+
+`honorific_expansions` currently covers Unicode 17 Arabic honorific word-ligature groups:
+
+- `U+FBC3..U+FBD2`
+- `U+FD40..U+FD4F`
+- `U+FD90..U+FD91`
+- `U+FDC8..U+FDCF`
+- `U+FDFA`, `U+FDFB`, `U+FDFD..U+FDFF`
+
+Combining honorific marks such as `U+0610..U+0613` are intentionally not expanded here because they attach to surrounding text instead of representing standalone word ligatures.
+
+Example:
+
+```sql
+CREATE VIRTUAL TABLE t_honorific USING fts5(
+  content,
+  tokenize='sqlite_tokenizer_ar honorific_expansions'
+);
+INSERT INTO t_honorific(content) VALUES ('قال ﵀');
+
+SELECT count(*) FROM t_honorific WHERE t_honorific MATCH '"رحمه الله"'; -- 1
+```
+
+Because expansion happens before FTS5 token callbacks, token offsets for expanded private-use glyphs refer to the expanded phrase text, not the original one-glyph source span.
 
 ## UDF Reference
 

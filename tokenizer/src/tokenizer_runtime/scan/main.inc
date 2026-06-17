@@ -1,11 +1,10 @@
-static int arabic_tokenize(
-    Fts5Tokenizer *pTokenizer,
+static int arabic_tokenize_scan(
+    ArabicTokenizer *tokenizer,
     void *pCtx,
     int flags,
     const char *pText,
     int nText,
     int (*xToken)(void *pCtx, int tflags, const char *pToken, int nToken, int iStart, int iEnd)) {
-  ArabicTokenizer *tokenizer = (ArabicTokenizer *)pTokenizer;
   int emitPositions = ((flags & ARABIC_TOKENIZE_EMIT_POSITIONS) != 0);
   int logicalPosition = 0;
 
@@ -119,4 +118,31 @@ static int arabic_tokenize(
   }
 
   return SQLITE_OK;
+}
+
+static int arabic_tokenize(
+    Fts5Tokenizer *pTokenizer,
+    void *pCtx,
+    int flags,
+    const char *pText,
+    int nText,
+    int (*xToken)(void *pCtx, int tflags, const char *pToken, int nToken, int iStart, int iEnd)) {
+  ArabicTokenizer *tokenizer = (ArabicTokenizer *)pTokenizer;
+  char *expandedText = NULL;
+  const char *scanText = pText;
+  int scanLen = nText;
+
+  if (tokenizer != NULL && tokenizer->enableHonorificExpansions) {
+    int rc = expand_honorific_phrases(pText, nText, &expandedText, &scanLen);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    if (expandedText != NULL) {
+      scanText = expandedText;
+    }
+  }
+
+  int rc = arabic_tokenize_scan(tokenizer, pCtx, flags, scanText, scanLen, xToken);
+  sqlite3_free(expandedText);
+  return rc;
 }

@@ -24,6 +24,7 @@ typedef struct ArabicTokenizer {
   StopwordTerm *stopwords;
   int stopwordCount;
   int hasCustomStopwords;
+  int enableHonorificExpansions;
 } ArabicTokenizer;
 
 typedef struct AnalyzeTermsBuffer {

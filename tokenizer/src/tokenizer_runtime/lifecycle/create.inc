@@ -60,6 +60,8 @@ static int arabic_create(void *ctx, const char **argv, int argc, Fts5Tokenizer *
       }
     } else if (strcmp(arg, "disable_stopwords") == 0) {
       tokenizer->hasCustomStopwords = 1;
+    } else if (strcmp(arg, "honorific_expansions") == 0) {
+      tokenizer->enableHonorificExpansions = 1;
     } else {
       arabic_free_tokenizer_data(tokenizer);
       sqlite3_free(tokenizer);
@@ -70,4 +72,3 @@ static int arabic_create(void *ctx, const char **argv, int argc, Fts5Tokenizer *
   *ppOut = (Fts5Tokenizer *)tokenizer;
   return SQLITE_OK;
 }
-

@@ -15,5 +15,5 @@ static void arabic_free_tokenizer_data(ArabicTokenizer *tokenizer) {
   tokenizer->stopwords = NULL;
   tokenizer->stopwordCount = 0;
   tokenizer->hasCustomStopwords = 0;
+  tokenizer->enableHonorificExpansions = 0;
 }
-

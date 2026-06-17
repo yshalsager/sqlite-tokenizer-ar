@@ -1040,6 +1040,29 @@ static int append_snippet_span(SnippetSpan **spans, int *count, int *cap, int st
   return SQLITE_OK;
 }
 
+static int honorific_expansion_matches_term(
+    const HonorificExpansion *expansion,
+    const NormalizeOptions *options,
+    const uint32_t *termCodepoints,
+    int termCount) {
+  if (expansion == NULL || termCodepoints == NULL || termCount <= 0) {
+    return 0;
+  }
+  uint32_t *phraseCodepoints = NULL;
+  int *phraseMapUnused = NULL;
+  int phraseCount = 0;
+  int rc = normalize_to_codepoints_with_map(
+      expansion->phrase, expansion->phraseLen, options, &phraseCodepoints, &phraseMapUnused, &phraseCount);
+  sqlite3_free(phraseMapUnused);
+  if (rc != SQLITE_OK) {
+    sqlite3_free(phraseCodepoints);
+    return -1;
+  }
+  int matched = find_codepoint_subsequence(phraseCodepoints, phraseCount, termCodepoints, termCount, 0) >= 0;
+  sqlite3_free(phraseCodepoints);
+  return matched;
+}
+
 static int collect_normalized_match_spans(
     const char *text,
     int nText,
@@ -1096,6 +1119,34 @@ static int collect_normalized_match_spans(
       (*matchCount)++;
       cursor = pos + termCount;
     }
+  }
+
+  int bytePos = 0;
+  int codepointPos = 0;
+  while (*matchCount < limit && bytePos < nText) {
+    int consumed = 0;
+    uint32_t cp = 0;
+    if (!utf8_decode(text + bytePos, nText - bytePos, &consumed, &cp)) {
+      bytePos++;
+      continue;
+    }
+    const HonorificExpansion *expansion = find_honorific_expansion(text + bytePos, nText - bytePos);
+    if (expansion != NULL) {
+      int matched = honorific_expansion_matches_term(expansion, &options, termCodepoints, termCount);
+      if (matched < 0) {
+        rc = SQLITE_NOMEM;
+        break;
+      }
+      if (matched) {
+        rc = append_snippet_span(spans, spanCount, spanCap, codepointPos, codepointPos + 1);
+        if (rc != SQLITE_OK) {
+          break;
+        }
+        (*matchCount)++;
+      }
+    }
+    bytePos += consumed;
+    codepointPos++;
   }
 
   sqlite3_free(textCodepoints);
