@@ -14,7 +14,11 @@ static void udf_sqlite_tokenizer_ar_stem(sqlite3_context *context, int argc, sql
     return;
   }
 
-  char *stemmed = sqlite3_malloc((size_t)nText + 1);
+  if (nText == INT_MAX) {
+    sqlite3_result_error(context, "input too large", -1);
+    return;
+  }
+  char *stemmed = sqlite3_malloc64((sqlite3_uint64)nText + 1);
   if (stemmed == NULL) {
     sqlite3_result_error_nomem(context);
     return;

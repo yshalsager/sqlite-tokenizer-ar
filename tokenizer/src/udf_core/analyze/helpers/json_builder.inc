@@ -1,13 +1,24 @@
 static int json_builder_ensure(char **zOut, int *nOut, int *nCap, int nAppend) {
-  if (*nOut + nAppend + 1 <= *nCap) {
+  if (nAppend < 0) {
+    return SQLITE_TOOBIG;
+  }
+  int requiredNoTerm = 0;
+  if (ar_checked_int_sum(*nOut, nAppend, &requiredNoTerm) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  int target = 0;
+  if (ar_checked_int_sum(requiredNoTerm, 1, &target) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  if (target <= *nCap) {
     return SQLITE_OK;
   }
-  int target = *nOut + nAppend + 1;
-  int cap = (*nCap <= 0) ? 64 : *nCap;
-  while (cap < target) {
-    cap *= 2;
+  int cap = 0;
+  int rc = ar_grow_capacity(*nCap, target, 64, &cap);
+  if (rc != SQLITE_OK) {
+    return rc;
   }
-  char *next = sqlite3_realloc(*zOut, (size_t)cap);
+  char *next = sqlite3_realloc64(*zOut, (sqlite3_uint64)cap);
   if (next == NULL) {
     return SQLITE_NOMEM;
   }
@@ -72,4 +83,3 @@ static int json_builder_append_int(char **zOut, int *nOut, int *nCap, int value)
   }
   return json_builder_append_bytes(zOut, nOut, nCap, buf, n);
 }
-

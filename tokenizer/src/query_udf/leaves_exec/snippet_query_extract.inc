@@ -63,12 +63,21 @@ static int snippet_query_string_list_append_unique(SnippetQueryStringList *list,
     return SQLITE_OK;
   }
   if (list->count >= list->cap) {
-    int nextCap = (list->cap <= 0) ? 16 : (list->cap * 2);
-    char **nextItems = sqlite3_realloc(list->items, (size_t)nextCap * sizeof(char *));
+    int required = 0;
+    int rc = ar_checked_int_sum(list->count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(list->cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    char **nextItems = ar_realloc_array(list->items, nextCap, sizeof(char *));
     if (nextItems == NULL) {
       return SQLITE_NOMEM;
     }
-    int *nextLens = sqlite3_realloc(list->itemLens, (size_t)nextCap * sizeof(int));
+    int *nextLens = ar_realloc_array(list->itemLens, nextCap, sizeof(int));
     if (nextLens == NULL) {
       list->items = nextItems;
       return SQLITE_NOMEM;
@@ -77,7 +86,11 @@ static int snippet_query_string_list_append_unique(SnippetQueryStringList *list,
     list->itemLens = nextLens;
     list->cap = nextCap;
   }
-  char *copy = sqlite3_malloc((size_t)nValue + 1);
+  int copyCap = 0;
+  if (ar_checked_int_sum(nValue, 1, &copyCap) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  char *copy = sqlite3_malloc64((sqlite3_uint64)copyCap);
   if (copy == NULL) {
     return SQLITE_NOMEM;
   }
@@ -321,7 +334,11 @@ static int snippet_query_escape_phrase(const char *text, int nText, char **outTe
   if (text == NULL || nText <= 0) {
     return SQLITE_OK;
   }
-  char *out = sqlite3_malloc((size_t)(nText * 2) + 1);
+  int outCap = 0;
+  if (ar_checked_int_sum((sqlite3_int64)nText * 2, 1, &outCap) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  char *out = sqlite3_malloc64((sqlite3_uint64)outCap);
   if (out == NULL) {
     return SQLITE_NOMEM;
   }
@@ -628,7 +645,7 @@ static int snippet_query_find_all_spans(
 
   int cap = 8;
   int count = 0;
-  SnippetSpan *spans = sqlite3_malloc((size_t)cap * sizeof(SnippetSpan));
+  SnippetSpan *spans = ar_malloc_array(cap, sizeof(SnippetSpan));
   if (spans == NULL) {
     sqlite3_free(textCodepoints);
     sqlite3_free(textOrigIndexMap);
@@ -647,8 +664,25 @@ static int snippet_query_find_all_spans(
     int endOrig = textOrigIndexMap[pos + termCount - 1] + 1;
     if (endOrig > startOrig) {
       if (count >= cap) {
-        int nextCap = cap * 2;
-        SnippetSpan *next = sqlite3_realloc(spans, (size_t)nextCap * sizeof(SnippetSpan));
+        int required = 0;
+        int growRc = ar_checked_int_sum(count, 1, &required);
+        if (growRc != SQLITE_OK) {
+          sqlite3_free(spans);
+          sqlite3_free(textCodepoints);
+          sqlite3_free(textOrigIndexMap);
+          sqlite3_free(termCodepoints);
+          return growRc;
+        }
+        int nextCap = 0;
+        growRc = ar_grow_capacity(cap, required, 8, &nextCap);
+        if (growRc != SQLITE_OK) {
+          sqlite3_free(spans);
+          sqlite3_free(textCodepoints);
+          sqlite3_free(textOrigIndexMap);
+          sqlite3_free(termCodepoints);
+          return growRc;
+        }
+        SnippetSpan *next = ar_realloc_array(spans, nextCap, sizeof(SnippetSpan));
         if (next == NULL) {
           sqlite3_free(spans);
           sqlite3_free(textCodepoints);
@@ -685,7 +719,7 @@ static int snippet_query_collect_value_spans(
   if (values == NULL || values->count <= 0) {
     return SQLITE_OK;
   }
-  SnippetQueryValueSpans *items = sqlite3_malloc((size_t)values->count * sizeof(SnippetQueryValueSpans));
+  SnippetQueryValueSpans *items = ar_malloc_array(values->count, sizeof(SnippetQueryValueSpans));
   if (items == NULL) {
     return SQLITE_NOMEM;
   }
@@ -706,8 +740,17 @@ static int snippet_query_append_span(SnippetSpan **items, int *count, int *cap, 
     return SQLITE_OK;
   }
   if (*count >= *cap) {
-    int nextCap = (*cap <= 0) ? 16 : (*cap * 2);
-    SnippetSpan *next = sqlite3_realloc(*items, (size_t)nextCap * sizeof(SnippetSpan));
+    int required = 0;
+    int rc = ar_checked_int_sum(*count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    SnippetSpan *next = ar_realloc_array(*items, nextCap, sizeof(SnippetSpan));
     if (next == NULL) {
       return SQLITE_NOMEM;
     }
@@ -725,8 +768,17 @@ static int snippet_query_append_ranked_span(SnippetRankedSpan **items, int *coun
     return SQLITE_OK;
   }
   if (*count >= *cap) {
-    int nextCap = (*cap <= 0) ? 16 : (*cap * 2);
-    SnippetRankedSpan *next = sqlite3_realloc(*items, (size_t)nextCap * sizeof(SnippetRankedSpan));
+    int required = 0;
+    int rc = ar_checked_int_sum(*count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    SnippetRankedSpan *next = ar_realloc_array(*items, nextCap, sizeof(SnippetRankedSpan));
     if (next == NULL) {
       return SQLITE_NOMEM;
     }
@@ -824,7 +876,7 @@ static int snippet_query_select_non_overlapping(
     return SQLITE_OK;
   }
   qsort(ranked, (size_t)rankedCount, sizeof(SnippetRankedSpan), compare_ranked_spans);
-  SnippetSpan *picked = sqlite3_malloc((size_t)rankedCount * sizeof(SnippetSpan));
+  SnippetSpan *picked = ar_malloc_array(rankedCount, sizeof(SnippetSpan));
   if (picked == NULL) {
     return SQLITE_NOMEM;
   }
@@ -885,11 +937,11 @@ static int snippet_query_render(
   }
 
   int snippetLen = e - s;
-  int snippetCap = snippetLen + 16;
-  if (snippetCap < 16) {
-    snippetCap = 16;
+  int snippetCap = 0;
+  if (ar_checked_int_sum(snippetLen, 16, &snippetCap) != SQLITE_OK || snippetCap < 16) {
+    return SQLITE_TOOBIG;
   }
-  uint32_t *snippet = sqlite3_malloc((size_t)snippetCap * sizeof(uint32_t));
+  uint32_t *snippet = ar_malloc_array(snippetCap, sizeof(uint32_t));
   if (snippet == NULL) {
     return SQLITE_NOMEM;
   }
@@ -899,7 +951,7 @@ static int snippet_query_render(
 
   SnippetSpan *sortedSpans = NULL;
   if (spanCount > 0) {
-    sortedSpans = sqlite3_malloc((size_t)spanCount * sizeof(SnippetSpan));
+    sortedSpans = ar_malloc_array(spanCount, sizeof(SnippetSpan));
     if (sortedSpans == NULL) {
       sqlite3_free(snippet);
       return SQLITE_NOMEM;

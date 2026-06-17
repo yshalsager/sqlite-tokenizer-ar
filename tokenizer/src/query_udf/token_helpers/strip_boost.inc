@@ -40,21 +40,8 @@ static void udf_sqlite_tokenizer_ar_strip_boost_json(sqlite3_context *context, i
         sqlite3_result_error(context, "invalid boosted token", -1);
         return;
       }
-      char numBuf[64];
       int nNum = nToken - boostStart;
-      if (nNum <= 0 || nNum >= (int)sizeof(numBuf)) {
-        sqlite3_result_error(context, "invalid boosted token", -1);
-        return;
-      }
-      memcpy(numBuf, token + boostStart, (size_t)nNum);
-      numBuf[nNum] = '\0';
-      char *endPtr = NULL;
-      double boostValue = strtod(numBuf, &endPtr);
-      if (endPtr == NULL || *endPtr != '\0') {
-        sqlite3_result_error(context, "invalid boosted token", -1);
-        return;
-      }
-      nBoost = format_float_like_python(boostValue, boostBuf, (int)sizeof(boostBuf));
+      nBoost = copy_boost_literal_span(token + boostStart, nNum, boostBuf, (int)sizeof(boostBuf), NULL);
       if (nBoost <= 0) {
         sqlite3_result_error(context, "invalid boosted token", -1);
         return;
@@ -77,7 +64,7 @@ static void udf_sqlite_tokenizer_ar_strip_boost_json(sqlite3_context *context, i
     if (!hasBoost) {
       rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, "null", 4);
     } else {
-      rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
+      rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
     }
   }
   if (rc == SQLITE_OK) {

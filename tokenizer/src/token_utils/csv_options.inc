@@ -1,3 +1,43 @@
+static int normalize_stem_exclusion_term(const char *input, int nInput, char **outTerm, int *outLen) {
+  int cap = 0;
+  int rc = ar_utf8_expanded_capacity(nInput, &cap);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
+  char *folded = sqlite3_malloc64((sqlite3_uint64)cap);
+  char *normalized = sqlite3_malloc64((sqlite3_uint64)cap);
+  if (folded == NULL || normalized == NULL) {
+    sqlite3_free(folded);
+    sqlite3_free(normalized);
+    return SQLITE_NOMEM;
+  }
+
+  int foldedLen = transform_token_utf8(input, nInput, folded, cap - 1, fold_codepoint_stage1);
+  if (foldedLen <= 0) {
+    sqlite3_free(folded);
+    sqlite3_free(normalized);
+    *outTerm = NULL;
+    *outLen = 0;
+    return SQLITE_OK;
+  }
+  folded[foldedLen] = '\0';
+
+  int normalizedLen = transform_token_utf8(folded, foldedLen, normalized, cap - 1, normalize_codepoint_stage2);
+  sqlite3_free(folded);
+  if (normalizedLen <= 0) {
+    sqlite3_free(normalized);
+    *outTerm = NULL;
+    *outLen = 0;
+    return SQLITE_OK;
+  }
+
+  normalized[normalizedLen] = '\0';
+  *outTerm = normalized;
+  *outLen = normalizedLen;
+  return SQLITE_OK;
+}
+
 static int add_stem_exclusion_csv(ArabicTokenizer *tokenizer, const char *csv) {
   const char *p = csv;
   while (*p) {
@@ -16,20 +56,28 @@ static int add_stem_exclusion_csv(ArabicTokenizer *tokenizer, const char *csv) {
     while (end > start && (end[-1] == ' ' || end[-1] == '\t')) {
       end--;
     }
-    int len = (int)(end - start);
-    if (len <= 0) {
+    int rawLen = (int)(end - start);
+    if (rawLen <= 0) {
       continue;
     }
 
-    char *term = sqlite3_malloc((size_t)len + 1);
-    if (term == NULL) {
-      return SQLITE_NOMEM;
+    char *term = NULL;
+    int len = 0;
+    int rc = normalize_stem_exclusion_term(start, rawLen, &term, &len);
+    if (rc != SQLITE_OK) {
+      return rc;
     }
-    memcpy(term, start, len);
-    term[len] = '\0';
+    if (term == NULL || len <= 0) {
+      sqlite3_free(term);
+      continue;
+    }
 
-    StemExclusionTerm *next = sqlite3_realloc(
-        tokenizer->stemExclusions, (size_t)(tokenizer->stemExclusionCount + 1) * sizeof(StemExclusionTerm));
+    int nextCount = 0;
+    if (ar_checked_int_sum(tokenizer->stemExclusionCount, 1, &nextCount) != SQLITE_OK) {
+      sqlite3_free(term);
+      return SQLITE_TOOBIG;
+    }
+    StemExclusionTerm *next = ar_realloc_array(tokenizer->stemExclusions, nextCount, sizeof(StemExclusionTerm));
     if (next == NULL) {
       sqlite3_free(term);
       return SQLITE_NOMEM;
@@ -37,7 +85,7 @@ static int add_stem_exclusion_csv(ArabicTokenizer *tokenizer, const char *csv) {
     tokenizer->stemExclusions = next;
     tokenizer->stemExclusions[tokenizer->stemExclusionCount].term = term;
     tokenizer->stemExclusions[tokenizer->stemExclusionCount].len = len;
-    tokenizer->stemExclusionCount++;
+    tokenizer->stemExclusionCount = nextCount;
   }
 
   return SQLITE_OK;
@@ -66,14 +114,19 @@ static int add_stopwords_csv(ArabicTokenizer *tokenizer, const char *csv) {
       continue;
     }
 
-    char *term = sqlite3_malloc((size_t)len + 1);
+    char *term = sqlite3_malloc64((sqlite3_uint64)len + 1);
     if (term == NULL) {
       return SQLITE_NOMEM;
     }
     memcpy(term, start, len);
     term[len] = '\0';
 
-    StopwordTerm *next = sqlite3_realloc(tokenizer->stopwords, (size_t)(tokenizer->stopwordCount + 1) * sizeof(StopwordTerm));
+    int nextCount = 0;
+    if (ar_checked_int_sum(tokenizer->stopwordCount, 1, &nextCount) != SQLITE_OK) {
+      sqlite3_free(term);
+      return SQLITE_TOOBIG;
+    }
+    StopwordTerm *next = ar_realloc_array(tokenizer->stopwords, nextCount, sizeof(StopwordTerm));
     if (next == NULL) {
       sqlite3_free(term);
       return SQLITE_NOMEM;
@@ -81,7 +134,7 @@ static int add_stopwords_csv(ArabicTokenizer *tokenizer, const char *csv) {
     tokenizer->stopwords = next;
     tokenizer->stopwords[tokenizer->stopwordCount].term = term;
     tokenizer->stopwords[tokenizer->stopwordCount].len = len;
-    tokenizer->stopwordCount++;
+    tokenizer->stopwordCount = nextCount;
   }
 
   return SQLITE_OK;
@@ -96,4 +149,3 @@ static int is_stem_exclusion(const ArabicTokenizer *tokenizer, const char *token
   }
   return 0;
 }
-

@@ -73,8 +73,8 @@ static void result_simple_token_or_binary_ast_json(sqlite3_context *context, con
       result_parse_query_ast_unsupported(context);
       return;
     }
-    const char *leftOccur = "SHOULD";
-    const char *rightOccur = "SHOULD";
+    const char *leftOccur;
+    const char *rightOccur;
     if (token_equals_ascii_ci(op, nOp, "AND")) {
       leftOccur = "MUST";
       rightOccur = "MUST";

@@ -27,13 +27,9 @@ static int parse_fuzzy_token_span(const char *token, int nToken, const char **ba
 
   int parsedEdits = 2;
   if (nRawEdits > 0) {
-    char editsBuf[32];
-    if (nRawEdits >= (int)sizeof(editsBuf)) {
+    if (!parse_nonnegative_int_span_clamped(rawEdits, nRawEdits, 2, &parsedEdits)) {
       return 0;
     }
-    memcpy(editsBuf, rawEdits, (size_t)nRawEdits);
-    editsBuf[nRawEdits] = '\0';
-    parsedEdits = atoi(editsBuf);
   }
   if (parsedEdits < 0) {
     parsedEdits = 0;
@@ -104,19 +100,7 @@ static int parse_top_level_group_boost_span(
   }
 
   int nRawBoost = boostEnd - boostStart;
-  if (nRawBoost <= 0 || nRawBoost >= 64) {
-    return 0;
-  }
-  char rawBoost[64];
-  memcpy(rawBoost, query + boostStart, (size_t)nRawBoost);
-  rawBoost[nRawBoost] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(rawBoost, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
-    return 0;
-  }
-
-  int nFmt = format_float_like_python(boostValue, boostBuf, boostBufCap);
+  int nFmt = copy_boost_literal_span(query + boostStart, nRawBoost, boostBuf, boostBufCap, NULL);
   if (nFmt <= 0) {
     return 0;
   }

@@ -37,7 +37,13 @@ static void udf_sqlite_tokenizer_ar_extract_boosted_group_spans_json(sqlite3_con
 
   const char *query = queryRaw + start;
   int nQuery = end - start;
-  int *stack = (int *)sqlite3_malloc64((sqlite3_uint64)sizeof(int) * (sqlite3_uint64)(nQuery + 1));
+  int stackCap = 0;
+  int stackCapRc = ar_checked_int_sum(nQuery, 1, &stackCap);
+  if (stackCapRc != SQLITE_OK) {
+    sqlite3_result_error_toobig(context);
+    return;
+  }
+  int *stack = (int *)ar_malloc_array(stackCap, sizeof(int));
   if (stack == NULL) {
     sqlite3_result_error_nomem(context);
     return;
@@ -60,6 +66,10 @@ static void udf_sqlite_tokenizer_ar_extract_boosted_group_spans_json(sqlite3_con
   int idx = 0;
   while (idx < nQuery) {
     char ch = query[idx];
+    if (ch == '\\' && idx + 1 < nQuery) {
+      idx += 2;
+      continue;
+    }
     if (ch == '"') {
       inQuote = !inQuote;
       idx++;

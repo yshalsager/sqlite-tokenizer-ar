@@ -24,16 +24,9 @@ static int parse_simple_operand_phrase_clause(
     if (slopEnd <= idx) {
       return 0;
     }
-    char slopBuf[32];
     int nSlopRaw = slopEnd - idx;
-    if (nSlopRaw <= 0 || nSlopRaw >= (int)sizeof(slopBuf)) {
+    if (!parse_nonnegative_int_span(text + idx, nSlopRaw, INT_MAX, &slopValue)) {
       return 0;
-    }
-    memcpy(slopBuf, text + idx, (size_t)nSlopRaw);
-    slopBuf[nSlopRaw] = '\0';
-    slopValue = atoi(slopBuf);
-    if (slopValue < 0) {
-      slopValue = 0;
     }
     idx = slopEnd;
   }
@@ -41,6 +34,9 @@ static int parse_simple_operand_phrase_clause(
     idx++;
     int boostEnd = 0;
     if (!parse_decimal_number_span(text, idx, e, &boostEnd)) {
+      return 0;
+    }
+    if (!is_boost_literal_shape(text + idx, boostEnd - idx)) {
       return 0;
     }
     idx = boostEnd;

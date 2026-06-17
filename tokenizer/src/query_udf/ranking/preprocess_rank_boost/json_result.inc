@@ -8,7 +8,7 @@ static int append_rank_boost_json_result(
     int nRankingQuery) {
   int rc = json_builder_append_bytes(json, jsonLen, jsonCap, "{\"boost_factor\":", 16);
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(json, jsonLen, jsonCap, boostFactor, nBoostFactor);
+    rc = json_builder_append_boost_literal(json, jsonLen, jsonCap, boostFactor, nBoostFactor);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_bytes(json, jsonLen, jsonCap, ",\"ranking_query\":", 17);

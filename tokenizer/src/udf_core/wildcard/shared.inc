@@ -88,7 +88,11 @@ static int wildcard_search_codepoints(const uint32_t *text, int nText, const uin
   if (nPattern <= 0) {
     return 1;
   }
-  uint32_t *wrappedPattern = sqlite3_malloc((size_t)(nPattern + 2) * sizeof(uint32_t));
+  int wrappedLen = 0;
+  if (ar_checked_int_sum(nPattern, 2, &wrappedLen) != SQLITE_OK) {
+    return -1;
+  }
+  uint32_t *wrappedPattern = ar_malloc_array(wrappedLen, sizeof(uint32_t));
   if (wrappedPattern == NULL) {
     return -1;
   }

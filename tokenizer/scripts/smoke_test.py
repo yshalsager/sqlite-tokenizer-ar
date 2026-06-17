@@ -156,6 +156,39 @@ def main() -> None:
         else:
             raise SystemExit('error: highlight normalized invalid empty JSON suffix accepted')
 
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('😀', '["\\uD83D\\uDE00"]', 'any', 8),
+            '\ue000😀\ue001',
+            'highlight normalized JSON surrogate pair',
+        )
+
+        assert_value(conn, "SELECT sqlite_tokenizer_ar_levenshtein('', 'abc', 1)", (), 2, 'levenshtein empty left capped')
+        assert_value(conn, "SELECT sqlite_tokenizer_ar_levenshtein('abc', '', 1)", (), 2, 'levenshtein empty right capped')
+        assert_value(conn, "SELECT sqlite_tokenizer_ar_levenshtein('', 'abc', 5)", (), 3, 'levenshtein empty left uncapped')
+        assert_value(conn, "SELECT sqlite_tokenizer_ar_levenshtein('aa', 'bbbb', 2)", (), 3, 'levenshtein final distance capped')
+        assert_value(conn, "SELECT sqlite_tokenizer_ar_levenshtein('abc', 'xyzuvw', 3)", (), 4, 'levenshtein final distance capped at max plus one')
+
+        try:
+            conn.execute("CREATE VIRTUAL TABLE t_bad USING fts5(content, tokenize='sqlite_tokenizer_ar disable_stopword')")
+        except sqlite3.OperationalError:
+            pass
+        else:
+            raise SystemExit('error: unknown tokenizer option accepted')
+
+        conn.execute(
+            "CREATE VIRTUAL TABLE t_excl_surface USING fts5(content, tokenize='sqlite_tokenizer_ar stem_exclusion مدرسة')"
+        )
+        conn.execute("INSERT INTO t_excl_surface(content) VALUES ('مدرسة')")
+        conn.execute("CREATE VIRTUAL TABLE tv_excl_surface USING fts5vocab(t_excl_surface, 'row')")
+        row_excl_surface = conn.execute("SELECT count(*) FROM tv_excl_surface WHERE term = ?", ('مدرسه',)).fetchone()
+        row_excl_surface_stem = conn.execute("SELECT count(*) FROM tv_excl_surface WHERE term = ?", ('مدرس',)).fetchone()
+        if (row_excl_surface is None or row_excl_surface[0] != 1) or (
+            row_excl_surface_stem is None or row_excl_surface_stem[0] != 0
+        ):
+            raise SystemExit('error: normalized stem-exclusion surface form mismatch')
+
         conn.execute(
             "CREATE VIRTUAL TABLE t_excl USING fts5(content, tokenize='sqlite_tokenizer_ar stem_exclusion كتابها')"
         )

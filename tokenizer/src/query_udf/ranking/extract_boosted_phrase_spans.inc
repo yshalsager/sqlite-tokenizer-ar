@@ -48,15 +48,8 @@ static int parse_boosted_phrase_span_candidate(
       return 0;
     }
     int nSlopRaw = slopEnd - idx;
-    if (nSlopRaw <= 0 || nSlopRaw >= 32) {
+    if (!parse_nonnegative_int_span(query + idx, nSlopRaw, INT_MAX, &slop)) {
       return 0;
-    }
-    char slopBuf[32];
-    memcpy(slopBuf, query + idx, (size_t)nSlopRaw);
-    slopBuf[nSlopRaw] = '\0';
-    slop = atoi(slopBuf);
-    if (slop < 0) {
-      slop = 0;
     }
     idx = slopEnd;
   }
@@ -66,19 +59,13 @@ static int parse_boosted_phrase_span_candidate(
   }
   idx++;
   int boostEnd = 0;
-  if (!parse_decimal_number_span(query, idx, nQuery, &boostEnd)) {
+  if (!parse_decimal_number_span(query, idx, nQuery, &boostEnd) || !is_query_boost_boundary(query, boostEnd, nQuery)) {
     return 0;
   }
   int nBoostRaw = boostEnd - idx;
-  if (nBoostRaw <= 0 || nBoostRaw >= 64) {
-    return 0;
-  }
-  char boostRaw[64];
-  memcpy(boostRaw, query + idx, (size_t)nBoostRaw);
-  boostRaw[nBoostRaw] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(boostRaw, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
+  double boostValue = 0.0;
+  int nBoost = copy_boost_literal_span(query + idx, nBoostRaw, boostBuf, boostBufCap, &boostValue);
+  if (nBoost <= 0) {
     return 0;
   }
   double boostDelta = boostValue - 1.0;
@@ -86,10 +73,6 @@ static int parse_boosted_phrase_span_candidate(
     boostDelta = -boostDelta;
   }
   if (boostDelta < 1e-12) {
-    return 0;
-  }
-  int nBoost = format_float_like_python(boostValue, boostBuf, boostBufCap);
-  if (nBoost <= 0) {
     return 0;
   }
 
@@ -185,7 +168,7 @@ static void udf_sqlite_tokenizer_ar_extract_boosted_phrase_spans_json(sqlite3_co
         rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"boost\":", 9);
       }
       if (rc == SQLITE_OK) {
-        rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
+        rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
       }
       if (rc == SQLITE_OK) {
         rc = json_builder_append_char(&json, &jsonLen, &jsonCap, '}');

@@ -83,12 +83,16 @@ static int stem_suffix(uint32_t *s, int len) {
 }
 
 static int stem_token_arabic_light(const char *in, int nIn, char *out, int outCap) {
-  uint32_t *codepoints = sqlite3_malloc((size_t)(nIn + 1) * sizeof(uint32_t));
+  int cpCap = 0;
+  if (ar_checked_int_sum(nIn, 1, &cpCap) != SQLITE_OK) {
+    return -1;
+  }
+  uint32_t *codepoints = ar_malloc_array(cpCap, sizeof(uint32_t));
   if (codepoints == NULL) {
     return -1;
   }
 
-  int len = utf8_to_codepoints(in, nIn, codepoints, nIn + 1);
+  int len = utf8_to_codepoints(in, nIn, codepoints, cpCap);
   len = stem_prefix(codepoints, len);
   len = stem_suffix(codepoints, len);
 

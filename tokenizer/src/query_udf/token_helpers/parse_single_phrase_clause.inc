@@ -75,22 +75,15 @@ static void udf_sqlite_tokenizer_ar_parse_single_phrase_clause_json(sqlite3_cont
       sqlite3_result_null(context);
       return;
     }
-    char slopBuf[32];
     int nSlop = idx - slopStart;
-    if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+    if (!parse_nonnegative_int_span(query + slopStart, nSlop, INT_MAX, &slop)) {
       sqlite3_result_null(context);
       return;
-    }
-    memcpy(slopBuf, query + slopStart, (size_t)nSlop);
-    slopBuf[nSlop] = '\0';
-    slop = atoi(slopBuf);
-    if (slop < 0) {
-      slop = 0;
     }
   }
 
   char boostBuf[64];
-  int nBoost = format_float_like_python(1.0, boostBuf, (int)sizeof(boostBuf));
+  int nBoost = copy_default_boost_literal(boostBuf, (int)sizeof(boostBuf));
   if (nBoost <= 0) {
     sqlite3_result_error(context, "failed to format default boost", -1);
     return;
@@ -103,20 +96,7 @@ static void udf_sqlite_tokenizer_ar_parse_single_phrase_clause_json(sqlite3_cont
       return;
     }
     int nRawBoost = boostEnd - idx;
-    if (nRawBoost <= 0 || nRawBoost >= 64) {
-      sqlite3_result_null(context);
-      return;
-    }
-    char rawBoost[64];
-    memcpy(rawBoost, query + idx, (size_t)nRawBoost);
-    rawBoost[nRawBoost] = '\0';
-    char *endPtr = NULL;
-    double boostValue = strtod(rawBoost, &endPtr);
-    if (endPtr == NULL || *endPtr != '\0') {
-      sqlite3_result_null(context);
-      return;
-    }
-    int nFmt = format_float_like_python(boostValue, boostBuf, (int)sizeof(boostBuf));
+    int nFmt = copy_boost_literal_span(query + idx, nRawBoost, boostBuf, (int)sizeof(boostBuf), NULL);
     if (nFmt <= 0) {
       sqlite3_result_null(context);
       return;
@@ -167,7 +147,7 @@ static void udf_sqlite_tokenizer_ar_parse_single_phrase_clause_json(sqlite3_cont
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"boost\":", (int)strlen(",\"boost\":"));
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_char(&json, &jsonLen, &jsonCap, '}');

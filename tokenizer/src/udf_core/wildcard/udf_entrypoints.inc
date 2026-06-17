@@ -24,16 +24,22 @@ static void udf_sqlite_tokenizer_ar_wildcard_match(sqlite3_context *context, int
     return;
   }
 
-  uint32_t *textCodepoints = sqlite3_malloc((size_t)(nText + 1) * sizeof(uint32_t));
-  uint32_t *patternCodepoints = sqlite3_malloc((size_t)(nPattern + 1) * sizeof(uint32_t));
+  int textCap = 0;
+  int patternCap = 0;
+  if (ar_checked_int_sum(nText, 1, &textCap) != SQLITE_OK || ar_checked_int_sum(nPattern, 1, &patternCap) != SQLITE_OK) {
+    sqlite3_result_error(context, "input too large", -1);
+    return;
+  }
+  uint32_t *textCodepoints = ar_malloc_array(textCap, sizeof(uint32_t));
+  uint32_t *patternCodepoints = ar_malloc_array(patternCap, sizeof(uint32_t));
   if (textCodepoints == NULL || patternCodepoints == NULL) {
     sqlite3_free(textCodepoints);
     sqlite3_free(patternCodepoints);
     sqlite3_result_error_nomem(context);
     return;
   }
-  int textLen = utf8_to_codepoints(text, nText, textCodepoints, nText + 1);
-  int patternLen = utf8_to_codepoints(pattern, nPattern, patternCodepoints, nPattern + 1);
+  int textLen = utf8_to_codepoints(text, nText, textCodepoints, textCap);
+  int patternLen = utf8_to_codepoints(pattern, nPattern, patternCodepoints, patternCap);
   int matched = wildcard_search_codepoints(textCodepoints, textLen, patternCodepoints, patternLen);
   sqlite3_free(textCodepoints);
   sqlite3_free(patternCodepoints);
@@ -67,16 +73,22 @@ static void udf_sqlite_tokenizer_ar_levenshtein(sqlite3_context *context, int ar
     maxEdits = 0;
   }
 
-  uint32_t *leftCodepoints = sqlite3_malloc((size_t)(nLeft + 1) * sizeof(uint32_t));
-  uint32_t *rightCodepoints = sqlite3_malloc((size_t)(nRight + 1) * sizeof(uint32_t));
+  int leftCap = 0;
+  int rightCap = 0;
+  if (ar_checked_int_sum(nLeft, 1, &leftCap) != SQLITE_OK || ar_checked_int_sum(nRight, 1, &rightCap) != SQLITE_OK) {
+    sqlite3_result_error(context, "input too large", -1);
+    return;
+  }
+  uint32_t *leftCodepoints = ar_malloc_array(leftCap, sizeof(uint32_t));
+  uint32_t *rightCodepoints = ar_malloc_array(rightCap, sizeof(uint32_t));
   if (leftCodepoints == NULL || rightCodepoints == NULL) {
     sqlite3_free(leftCodepoints);
     sqlite3_free(rightCodepoints);
     sqlite3_result_error_nomem(context);
     return;
   }
-  int nLeftCodepoints = utf8_to_codepoints(left, nLeft, leftCodepoints, nLeft + 1);
-  int nRightCodepoints = utf8_to_codepoints(right, nRight, rightCodepoints, nRight + 1);
+  int nLeftCodepoints = utf8_to_codepoints(left, nLeft, leftCodepoints, leftCap);
+  int nRightCodepoints = utf8_to_codepoints(right, nRight, rightCodepoints, rightCap);
   int distance = levenshtein_codepoints(leftCodepoints, nLeftCodepoints, rightCodepoints, nRightCodepoints, maxEdits);
   sqlite3_free(leftCodepoints);
   sqlite3_free(rightCodepoints);

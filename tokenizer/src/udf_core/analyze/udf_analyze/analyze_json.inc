@@ -20,9 +20,16 @@ static void udf_sqlite_tokenizer_ar_analyze_json(sqlite3_context *context, int a
   memset(&terms, 0, sizeof(terms));
   int rc = arabic_tokenize(
       (Fts5Tokenizer *)&tokenizer, &terms, FTS5_TOKENIZE_QUERY, text, nText, analyze_collect_token);
-  if (rc != SQLITE_OK || terms.oom) {
+  if (rc == SQLITE_OK) {
+    rc = terms.rc;
+  }
+  if (rc != SQLITE_OK) {
     analyze_terms_buffer_free(&terms);
-    sqlite3_result_error_nomem(context);
+    if (rc == SQLITE_TOOBIG) {
+      sqlite3_result_error_toobig(context);
+    } else {
+      sqlite3_result_error_nomem(context);
+    }
     return;
   }
 

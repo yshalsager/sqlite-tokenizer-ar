@@ -94,18 +94,7 @@ static int try_extract_rank_boost_leaf_clause(
   }
 
   int nRawBoost = nQuery - boostStart;
-  if (nRawBoost <= 0 || nRawBoost >= 64) {
-    return -1;
-  }
-  char rawBoost[64];
-  memcpy(rawBoost, query + boostStart, (size_t)nRawBoost);
-  rawBoost[nRawBoost] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(rawBoost, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
-    return 0;
-  }
-  int nFmtBoost = format_float_like_python(boostValue, boostFactorBuf, nBoostFactorBuf);
+  int nFmtBoost = copy_boost_literal_span(query + boostStart, nRawBoost, boostFactorBuf, nBoostFactorBuf, NULL);
   if (nFmtBoost <= 0) {
     return -1;
   }
@@ -139,7 +128,7 @@ static int try_extract_rank_boost_leaf_clause(
     if (!scopeMatches) {
       *rankingQueryOut = query;
       *nRankingQueryOut = nQuery;
-      *nBoostFactorOut = format_float_like_python(1.0, boostFactorBuf, nBoostFactorBuf);
+      *nBoostFactorOut = copy_default_boost_literal(boostFactorBuf, nBoostFactorBuf);
       return (*nBoostFactorOut > 0) ? 1 : -1;
     }
   }

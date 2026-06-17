@@ -52,7 +52,7 @@ After loading the extension, SQLite gets:
 - UDF: `sqlite_tokenizer_ar_extract_boosted_phrase_spans_json(query)`
 - UDF (migration stub): `sqlite_tokenizer_ar_parse_query_ast_json(query)`
 - UDF (migration helper): `sqlite_tokenizer_ar_iter_query_ast_leaves_json(query)`
-- UDF (migration stub): `sqlite_tokenizer_ar_execute_query_json(query, field, limit, options_json)`
+- UDF: `sqlite_tokenizer_ar_execute_query_json(query, field, limit, options_json)`
 
 Extension entry points:
 
@@ -261,7 +261,9 @@ Accepted forms:
 Behavior:
 
 - Excluded terms skip stemming only.
+- Stem-exclusion terms are normalized before comparison, so surface forms such as `مدرسة` match the normalized pre-stem token `مدرسه`.
 - All other pipeline stages still apply.
+- Unknown tokenizer arguments are rejected so option typos fail during virtual-table creation.
 
 Example:
 
@@ -565,7 +567,7 @@ Current behavior:
 - `sqlite_tokenizer_ar_parse_query_ast_json` supports:
   - fixture-covered parser shapes in `tests/fixtures/queries/inputs.smoke|complex|snippets.jsonl`, including grouped/nested clauses used by the current query-compat gates.
 - `sqlite_tokenizer_ar_iter_query_ast_leaves_json` returns flattened AST leaves with composed occur semantics (`MUST/SHOULD/MUST_NOT`) for ranking/planner helpers.
-- `sqlite_tokenizer_ar_execute_query_json` currently returns explicit `"not implemented yet"` errors until planner/ranker/snippet runtime is fully ported to C.
+- `sqlite_tokenizer_ar_execute_query_json` runs the fixture-covered C planner/ranker/snippet backend. It reads the current SQLite database and maintains FTS5 vocab helper tables, so it is intentionally registered without `SQLITE_DETERMINISTIC` and with `SQLITE_DIRECTONLY` when supported by SQLite.
 
 ## Integration Patterns
 

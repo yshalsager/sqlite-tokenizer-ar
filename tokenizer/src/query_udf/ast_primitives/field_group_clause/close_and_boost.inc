@@ -90,19 +90,8 @@ static int parse_field_group_optional_boost(
       return 0;
     }
 
-    char numBuf[64];
     int nNum = boostEnd - boostStart;
-    if (nNum <= 0 || nNum >= (int)sizeof(numBuf)) {
-      return 0;
-    }
-    memcpy(numBuf, query + boostStart, (size_t)nNum);
-    numBuf[nNum] = '\0';
-    char *endPtr = NULL;
-    double boostValue = strtod(numBuf, &endPtr);
-    if (endPtr == NULL || *endPtr != '\0') {
-      return 0;
-    }
-    boostLen = format_float_like_python(boostValue, boostBuf, boostBufCap);
+    boostLen = copy_boost_literal_span(query + boostStart, nNum, boostBuf, boostBufCap, NULL);
     if (boostLen <= 0) {
       return 0;
     }

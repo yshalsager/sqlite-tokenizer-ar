@@ -26,7 +26,7 @@ static int parse_simple_boolean_operand(
   if (is_simple_boolean_token_plain(token, nToken)) {
     *outBase = token;
     *outNBase = nToken;
-    *outNBoost = format_float_like_python(1.0, outBoostBuf, outBoostCap);
+    *outNBoost = copy_default_boost_literal(outBoostBuf, outBoostCap);
     return (*outNBoost > 0);
   }
 
@@ -53,21 +53,10 @@ static int parse_simple_boolean_operand(
     return 0;
   }
 
-  char numBuf[64];
   int nNum = nToken - boostStart;
-  if (nNum <= 0 || nNum >= (int)sizeof(numBuf)) {
-    return 0;
-  }
-  memcpy(numBuf, token + boostStart, (size_t)nNum);
-  numBuf[nNum] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(numBuf, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
-    return 0;
-  }
-  int nBoost = format_float_like_python(boostValue, outBoostBuf, outBoostCap);
+  int nBoost = copy_boost_literal_span(token + boostStart, nNum, outBoostBuf, outBoostCap, NULL);
   if (nBoost <= 0) {
-    return 0;
+    return -1;
   }
 
   *outBase = token;
@@ -160,22 +149,27 @@ static void udf_sqlite_tokenizer_ar_parse_simple_boolean_json(sqlite3_context *c
   char rightBoostBuf[64];
   int nLeftBoost = 0;
   int nRightBoost = 0;
-  if (!parse_simple_boolean_operand(
-          trimmed + leftStart,
-          nLeft,
-          &leftBase,
-          &nLeftBase,
-          leftBoostBuf,
-          (int)sizeof(leftBoostBuf),
-          &nLeftBoost) ||
-      !parse_simple_boolean_operand(
-          trimmed + rightStart,
-          nRight,
-          &rightBase,
-          &nRightBase,
-          rightBoostBuf,
-          (int)sizeof(rightBoostBuf),
-          &nRightBoost)) {
+  int leftRc = parse_simple_boolean_operand(
+      trimmed + leftStart,
+      nLeft,
+      &leftBase,
+      &nLeftBase,
+      leftBoostBuf,
+      (int)sizeof(leftBoostBuf),
+      &nLeftBoost);
+  int rightRc = parse_simple_boolean_operand(
+      trimmed + rightStart,
+      nRight,
+      &rightBase,
+      &nRightBase,
+      rightBoostBuf,
+      (int)sizeof(rightBoostBuf),
+      &nRightBoost);
+  if (leftRc < 0 || rightRc < 0) {
+    sqlite3_result_error(context, "invalid boosted token", -1);
+    return;
+  }
+  if (!leftRc || !rightRc) {
     sqlite3_result_null(context);
     return;
   }
@@ -201,7 +195,7 @@ static void udf_sqlite_tokenizer_ar_parse_simple_boolean_json(sqlite3_context *c
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"left_boost\":", 14);
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, leftBoostBuf, nLeftBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, leftBoostBuf, nLeftBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"right\":", 9);
@@ -213,7 +207,7 @@ static void udf_sqlite_tokenizer_ar_parse_simple_boolean_json(sqlite3_context *c
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"right_boost\":", 15);
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, rightBoostBuf, nRightBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, rightBoostBuf, nRightBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_char(&json, &jsonLen, &jsonCap, '}');

@@ -277,8 +277,17 @@ static int execute_query_hit_compare_merged(const void *left, const void *right)
 
 static int execute_query_hits_append(ExecuteQueryHit **hits, int *count, int *cap, int fieldKind, int bookId, int itemId, double score) {
   if (*count >= *cap) {
-    int nextCap = (*cap <= 0) ? 16 : (*cap * 2);
-    ExecuteQueryHit *next = sqlite3_realloc(*hits, (size_t)nextCap * sizeof(ExecuteQueryHit));
+    int required = 0;
+    int rc = ar_checked_int_sum(*count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    ExecuteQueryHit *next = ar_realloc_array(*hits, nextCap, sizeof(ExecuteQueryHit));
     if (next == NULL) {
       return SQLITE_NOMEM;
     }
@@ -304,8 +313,17 @@ static int execute_query_lookup_doc_len(const ExecuteQueryBookLen *lens, int len
 
 static int execute_query_book_lens_append(ExecuteQueryBookLen **lens, int *count, int *cap, int bookId, int docLen) {
   if (*count >= *cap) {
-    int nextCap = (*cap <= 0) ? 16 : (*cap * 2);
-    ExecuteQueryBookLen *next = sqlite3_realloc(*lens, (size_t)nextCap * sizeof(ExecuteQueryBookLen));
+    int required = 0;
+    int rc = ar_checked_int_sum(*count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    ExecuteQueryBookLen *next = ar_realloc_array(*lens, nextCap, sizeof(ExecuteQueryBookLen));
     if (next == NULL) {
       return SQLITE_NOMEM;
     }
@@ -608,13 +626,21 @@ static int execute_query_analyze_single_term(const char *raw, int nRaw, char **t
   AnalyzeTermsBuffer terms;
   memset(&terms, 0, sizeof(terms));
   int rc = arabic_tokenize((Fts5Tokenizer *)&tokenizer, &terms, FTS5_TOKENIZE_QUERY, raw, nRaw, analyze_collect_token);
-  if (rc != SQLITE_OK || terms.oom) {
+  if (rc == SQLITE_OK) {
+    rc = terms.rc;
+  }
+  if (rc != SQLITE_OK) {
     analyze_terms_buffer_free(&terms);
-    return SQLITE_NOMEM;
+    return rc;
   }
   *tokenCountOut = terms.count;
   if (terms.count == 1) {
-    char *copy = sqlite3_malloc((size_t)terms.termLens[0] + 1);
+    int copyCap = 0;
+    if (ar_checked_int_sum(terms.termLens[0], 1, &copyCap) != SQLITE_OK) {
+      analyze_terms_buffer_free(&terms);
+      return SQLITE_TOOBIG;
+    }
+    char *copy = sqlite3_malloc64((sqlite3_uint64)copyCap);
     if (copy == NULL) {
       analyze_terms_buffer_free(&terms);
       return SQLITE_NOMEM;
@@ -929,15 +955,28 @@ static void execute_query_free_expanded_terms(char **terms, int termCount) {
 
 static int execute_query_append_expanded_term(char ***termsOut, int *termCountOut, int *termCapOut, const char *term, int nTerm) {
   if (*termCountOut >= *termCapOut) {
-    int nextCap = (*termCapOut <= 0) ? 16 : (*termCapOut * 2);
-    char **nextTerms = sqlite3_realloc(*termsOut, (size_t)nextCap * sizeof(char *));
+    int required = 0;
+    int rc = ar_checked_int_sum(*termCountOut, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*termCapOut, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    char **nextTerms = ar_realloc_array(*termsOut, nextCap, sizeof(char *));
     if (nextTerms == NULL) {
       return SQLITE_NOMEM;
     }
     *termsOut = nextTerms;
     *termCapOut = nextCap;
   }
-  char *copy = sqlite3_malloc((size_t)nTerm + 1);
+  int copyCap = 0;
+  if (ar_checked_int_sum(nTerm, 1, &copyCap) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  char *copy = sqlite3_malloc64((sqlite3_uint64)copyCap);
   if (copy == NULL) {
     return SQLITE_NOMEM;
   }
@@ -1537,9 +1576,12 @@ static int execute_query_collect_phrase_terms(const char *text, int nText, Execu
       text,
       nText,
       analyze_collect_token_with_position);
-  if (rc != SQLITE_OK || analyzed.oom) {
+  if (rc == SQLITE_OK) {
+    rc = analyzed.rc;
+  }
+  if (rc != SQLITE_OK) {
     analyze_terms_buffer_free(&analyzed);
-    return SQLITE_NOMEM;
+    return rc;
   }
   if (analyzed.count <= 0) {
     analyze_terms_buffer_free(&analyzed);
@@ -1547,7 +1589,7 @@ static int execute_query_collect_phrase_terms(const char *text, int nText, Execu
   }
 
   int analyzedCount = analyzed.count;
-  ExecutePhraseTerm *terms = sqlite3_malloc((size_t)analyzedCount * sizeof(ExecutePhraseTerm));
+  ExecutePhraseTerm *terms = ar_malloc_array(analyzedCount, sizeof(ExecutePhraseTerm));
   if (terms == NULL) {
     analyze_terms_buffer_free(&analyzed);
     return SQLITE_NOMEM;
@@ -1556,7 +1598,13 @@ static int execute_query_collect_phrase_terms(const char *text, int nText, Execu
   int firstPosition = analyzed.positions[0];
   for (int i = 0; i < analyzedCount; i++) {
     terms[i].nTerm = analyzed.termLens[i];
-    terms[i].term = sqlite3_malloc((size_t)terms[i].nTerm + 1);
+    int termCap = 0;
+    if (ar_checked_int_sum(terms[i].nTerm, 1, &termCap) != SQLITE_OK) {
+      execute_query_free_phrase_terms(terms, analyzed.count);
+      analyze_terms_buffer_free(&analyzed);
+      return SQLITE_TOOBIG;
+    }
+    terms[i].term = sqlite3_malloc64((sqlite3_uint64)termCap);
     if (terms[i].term == NULL) {
       execute_query_free_phrase_terms(terms, analyzed.count);
       analyze_terms_buffer_free(&analyzed);
@@ -1687,8 +1735,17 @@ static int execute_query_term_offsets_append(
   int idx = execute_query_find_term_offsets(*entries, *entryCount, term, nTerm);
   if (idx < 0) {
     if (*entryCount >= *entryCap) {
-      int nextCap = (*entryCap <= 0) ? 8 : (*entryCap * 2);
-      ExecuteTermOffsetEntry *next = sqlite3_realloc(*entries, (size_t)nextCap * sizeof(ExecuteTermOffsetEntry));
+      int required = 0;
+      int rc = ar_checked_int_sum(*entryCount, 1, &required);
+      if (rc != SQLITE_OK) {
+        return rc;
+      }
+      int nextCap = 0;
+      rc = ar_grow_capacity(*entryCap, required, 8, &nextCap);
+      if (rc != SQLITE_OK) {
+        return rc;
+      }
+      ExecuteTermOffsetEntry *next = ar_realloc_array(*entries, nextCap, sizeof(ExecuteTermOffsetEntry));
       if (next == NULL) {
         return SQLITE_NOMEM;
       }
@@ -1696,22 +1753,37 @@ static int execute_query_term_offsets_append(
       *entryCap = nextCap;
     }
     idx = *entryCount;
-    (*entryCount)++;
-    (*entries)[idx].term = sqlite3_malloc((size_t)nTerm + 1);
-    if ((*entries)[idx].term == NULL) {
+    int termCap = 0;
+    int rc = ar_checked_int_sum(nTerm, 1, &termCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    char *termCopy = sqlite3_malloc64((sqlite3_uint64)termCap);
+    if (termCopy == NULL) {
       return SQLITE_NOMEM;
     }
-    memcpy((*entries)[idx].term, term, (size_t)nTerm);
-    (*entries)[idx].term[nTerm] = '\0';
+    memcpy(termCopy, term, (size_t)nTerm);
+    termCopy[nTerm] = '\0';
+    (*entries)[idx].term = termCopy;
     (*entries)[idx].nTerm = nTerm;
     (*entries)[idx].offsets = NULL;
     (*entries)[idx].count = 0;
     (*entries)[idx].cap = 0;
+    *entryCount = idx + 1;
   }
 
   if ((*entries)[idx].count >= (*entries)[idx].cap) {
-    int nextCap = ((*entries)[idx].cap <= 0) ? 8 : ((*entries)[idx].cap * 2);
-    int *nextOffsets = sqlite3_realloc((*entries)[idx].offsets, (size_t)nextCap * sizeof(int));
+    int required = 0;
+    int rc = ar_checked_int_sum((*entries)[idx].count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity((*entries)[idx].cap, required, 8, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int *nextOffsets = ar_realloc_array((*entries)[idx].offsets, nextCap, sizeof(int));
     if (nextOffsets == NULL) {
       return SQLITE_NOMEM;
     }
@@ -1744,9 +1816,12 @@ static int execute_query_build_term_offsets_from_text(
       text,
       nText,
       analyze_collect_token_with_position);
-  if (rc != SQLITE_OK || analyzed.oom) {
+  if (rc == SQLITE_OK) {
+    rc = analyzed.rc;
+  }
+  if (rc != SQLITE_OK) {
     analyze_terms_buffer_free(&analyzed);
-    return SQLITE_NOMEM;
+    return rc;
   }
 
   ExecuteTermOffsetEntry *entries = NULL;
@@ -1831,9 +1906,9 @@ static int execute_query_count_phrase_frequency(
   if (termCount < 2 || phraseTerms == NULL) {
     return 0;
   }
-  const int **offsetsByTerm = sqlite3_malloc((size_t)termCount * sizeof(int *));
-  int *countsByTerm = sqlite3_malloc((size_t)termCount * sizeof(int));
-  int *phrasePositions = sqlite3_malloc((size_t)termCount * sizeof(int));
+  const int **offsetsByTerm = ar_malloc_array(termCount, sizeof(int *));
+  int *countsByTerm = ar_malloc_array(termCount, sizeof(int));
+  int *phrasePositions = ar_malloc_array(termCount, sizeof(int));
   if (offsetsByTerm == NULL || countsByTerm == NULL || phrasePositions == NULL) {
     sqlite3_free(offsetsByTerm);
     sqlite3_free(countsByTerm);
@@ -2303,16 +2378,9 @@ static int execute_query_parse_boolean_clause(const ParsedSimpleAstClause *claus
       if (splitAt < 0 || splitAt + 1 >= nPhrasePayload) {
         return 1;
       }
-      char slopBuf[32];
       int nSlop = splitAt;
-      if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+      if (!parse_nonnegative_int_span(phrasePayload, nSlop, INT_MAX, &phraseSlop)) {
         return 1;
-      }
-      memcpy(slopBuf, phrasePayload, (size_t)nSlop);
-      slopBuf[nSlop] = '\0';
-      phraseSlop = atoi(slopBuf);
-      if (phraseSlop < 0) {
-        phraseSlop = 0;
       }
       phraseText = phrasePayload + splitAt + 1;
       nPhraseText = nPhrasePayload - (splitAt + 1);
@@ -2407,11 +2475,9 @@ static int execute_query_parse_phrase_boolean_boosts(
     return 0;
   }
 
-  char *leftEnd = NULL;
-  char *rightEnd = NULL;
-  double leftBoost = strtod(left.boostBuf, &leftEnd);
-  double rightBoost = strtod(right.boostBuf, &rightEnd);
-  if (leftEnd == NULL || *leftEnd != '\0' || rightEnd == NULL || *rightEnd != '\0') {
+  double leftBoost = 0.0;
+  double rightBoost = 0.0;
+  if (!parse_boost_literal_double_cstr(left.boostBuf, &leftBoost) || !parse_boost_literal_double_cstr(right.boostBuf, &rightBoost)) {
     return 0;
   }
 
@@ -2707,7 +2773,11 @@ static int execute_query_unwrap_outer_parens(char **compiledInOut, int *nCompile
     return SQLITE_OK;
   }
   int nInner = nCompiled - 2;
-  char *inner = sqlite3_malloc((size_t)nInner + 1);
+  int innerCap = 0;
+  if (ar_checked_int_sum(nInner, 1, &innerCap) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  char *inner = sqlite3_malloc64((sqlite3_uint64)innerCap);
   if (inner == NULL) {
     return SQLITE_NOMEM;
   }
@@ -2769,16 +2839,9 @@ static int execute_query_compile_phrase_clause_for_field(
     if (splitAt < 0 || splitAt + 1 >= nPhrasePayload) {
       return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
     }
-    char slopBuf[32];
     int nSlop = splitAt;
-    if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+    if (!parse_nonnegative_int_span(phrasePayload, nSlop, INT_MAX, &phraseSlop)) {
       return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
-    memcpy(slopBuf, phrasePayload, (size_t)nSlop);
-    slopBuf[nSlop] = '\0';
-    phraseSlop = atoi(slopBuf);
-    if (phraseSlop < 0) {
-      phraseSlop = 0;
     }
     phraseText = phrasePayload + splitAt + 1;
     nPhraseText = nPhrasePayload - (splitAt + 1);
@@ -3057,15 +3120,28 @@ static int execute_query_boosted_tokens_append(
     int nTerm,
     float boost) {
   if (*count >= *cap) {
-    int nextCap = (*cap <= 0) ? 8 : (*cap * 2);
-    ExecuteQueryBoostedToken *next = sqlite3_realloc(*tokens, (size_t)nextCap * sizeof(ExecuteQueryBoostedToken));
+    int required = 0;
+    int rc = ar_checked_int_sum(*count, 1, &required);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    int nextCap = 0;
+    rc = ar_grow_capacity(*cap, required, 8, &nextCap);
+    if (rc != SQLITE_OK) {
+      return rc;
+    }
+    ExecuteQueryBoostedToken *next = ar_realloc_array(*tokens, nextCap, sizeof(ExecuteQueryBoostedToken));
     if (next == NULL) {
       return SQLITE_NOMEM;
     }
     *tokens = next;
     *cap = nextCap;
   }
-  char *termCopy = sqlite3_malloc((size_t)nTerm + 1);
+  int termCopyCap = 0;
+  if (ar_checked_int_sum(nTerm, 1, &termCopyCap) != SQLITE_OK) {
+    return SQLITE_TOOBIG;
+  }
+  char *termCopy = sqlite3_malloc64((sqlite3_uint64)termCopyCap);
   if (termCopy == NULL) {
     return SQLITE_NOMEM;
   }
@@ -3295,9 +3371,8 @@ static void udf_sqlite_tokenizer_ar_execute_query_json(sqlite3_context *context,
       }
       memcpy(boostBuf, groupBoostBuf, (size_t)nGroupBoost);
       boostBuf[nGroupBoost] = '\0';
-      char *boostEnd = NULL;
-      double parsedBoost = strtod(boostBuf, &boostEnd);
-      if (boostEnd == NULL || *boostEnd != '\0') {
+      double parsedBoost = 0.0;
+      if (!parse_boost_literal_double_cstr(boostBuf, &parsedBoost)) {
         sqlite3_result_error(context, "invalid group boost", -1);
         return;
       }
@@ -3341,9 +3416,8 @@ static void udf_sqlite_tokenizer_ar_execute_query_json(sqlite3_context *context,
       }
       memcpy(boostBuf, scopedGroupBoost, (size_t)nScopedGroupBoost);
       boostBuf[nScopedGroupBoost] = '\0';
-      char *boostEnd = NULL;
-      double parsedBoost = strtod(boostBuf, &boostEnd);
-      if (boostEnd == NULL || *boostEnd != '\0') {
+      double parsedBoost = 0.0;
+      if (!parse_boost_literal_double_cstr(boostBuf, &parsedBoost)) {
         sqlite3_result_error(context, "invalid group boost", -1);
         return;
       }
@@ -3422,9 +3496,8 @@ static void udf_sqlite_tokenizer_ar_execute_query_json(sqlite3_context *context,
             }
             memcpy(boostBuf, mustBoost, (size_t)nMustBoost);
             boostBuf[nMustBoost] = '\0';
-            char *boostEnd = NULL;
-            double parsedBoost = strtod(boostBuf, &boostEnd);
-            if (boostEnd == NULL || *boostEnd != '\0') {
+            double parsedBoost = 0.0;
+            if (!parse_boost_literal_double_cstr(boostBuf, &parsedBoost)) {
               sqlite3_result_error(context, "invalid group boost", -1);
               return;
             }
@@ -3586,18 +3659,11 @@ static void udf_sqlite_tokenizer_ar_execute_query_json(sqlite3_context *context,
               context, "C backend is not available: execute_query_json currently supports only basic phrase queries", -1);
           return;
         }
-        char slopBuf[32];
         int nSlop = splitAt;
-        if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+        if (!parse_nonnegative_int_span(phrasePayload, nSlop, INT_MAX, &phraseSlop)) {
           sqlite3_result_error(
               context, "C backend is not available: execute_query_json currently supports only basic phrase queries", -1);
           return;
-        }
-        memcpy(slopBuf, phrasePayload, (size_t)nSlop);
-        slopBuf[nSlop] = '\0';
-        phraseSlop = atoi(slopBuf);
-        if (phraseSlop < 0) {
-          phraseSlop = 0;
         }
         phraseText = phrasePayload + splitAt + 1;
         nPhraseText = nPhrasePayload - (splitAt + 1);
@@ -3615,9 +3681,8 @@ static void udf_sqlite_tokenizer_ar_execute_query_json(sqlite3_context *context,
           parsedNext++;
         }
         if (parsedNext == queryEnd) {
-          char *boostEnd = NULL;
-          double parsedBoost = strtod(parsedSinglePhrase.boostBuf, &boostEnd);
-          if (boostEnd != NULL && *boostEnd == '\0') {
+          double parsedBoost = 0.0;
+          if (parse_boost_literal_double_cstr(parsedSinglePhrase.boostBuf, &parsedBoost)) {
             phraseBoost = (float)parsedBoost;
           }
           if (parsedSinglePhrase.scope != NULL) {

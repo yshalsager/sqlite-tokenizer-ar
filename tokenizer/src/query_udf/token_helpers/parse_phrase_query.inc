@@ -41,17 +41,10 @@ static void udf_sqlite_tokenizer_ar_parse_phrase_query_json(sqlite3_context *con
       sqlite3_result_null(context);
       return;
     }
-    char slopBuf[32];
     int nSlop = idx - slopStart;
-    if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+    if (!parse_nonnegative_int_span(query + slopStart, nSlop, INT_MAX, &slopValue)) {
       sqlite3_result_null(context);
       return;
-    }
-    memcpy(slopBuf, query + slopStart, (size_t)nSlop);
-    slopBuf[nSlop] = '\0';
-    slopValue = atoi(slopBuf);
-    if (slopValue < 0) {
-      slopValue = 0;
     }
   }
 

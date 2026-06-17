@@ -21,17 +21,7 @@ static int parse_simple_operand_group_clause(
       return 0;
     }
     int nBoost = boostEnd - idx;
-    if (nBoost <= 0 || nBoost >= (int)sizeof(boostBuf)) {
-      return 0;
-    }
-    memcpy(boostBuf, text + idx, (size_t)nBoost);
-    boostBuf[nBoost] = '\0';
-    char *endPtr = NULL;
-    double boostValue = strtod(boostBuf, &endPtr);
-    if (endPtr == NULL || *endPtr != '\0') {
-      return 0;
-    }
-    boostLen = format_float_like_python(boostValue, boostBuf, (int)sizeof(boostBuf));
+    boostLen = copy_boost_literal_span(text + idx, nBoost, boostBuf, (int)sizeof(boostBuf), NULL);
     if (boostLen <= 0) {
       return 0;
     }

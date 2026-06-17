@@ -1,6 +1,17 @@
+static int levenshtein_over_limit(int maxEdits) {
+  return maxEdits == INT_MAX ? INT_MAX : maxEdits + 1;
+}
+
 static int levenshtein_codepoints(const uint32_t *a, int nA, const uint32_t *b, int nB, int maxEdits) {
   if (maxEdits < 0) {
     maxEdits = 0;
+  }
+  int lenDiff = nA - nB;
+  if (lenDiff < 0) {
+    lenDiff = -lenDiff;
+  }
+  if (lenDiff > maxEdits) {
+    return levenshtein_over_limit(maxEdits);
   }
   if (nA == nB && nA > 0 && memcmp(a, b, (size_t)nA * sizeof(uint32_t)) == 0) {
     return 0;
@@ -11,16 +22,13 @@ static int levenshtein_codepoints(const uint32_t *a, int nA, const uint32_t *b, 
   if (nB == 0) {
     return nA;
   }
-  int lenDiff = nA - nB;
-  if (lenDiff < 0) {
-    lenDiff = -lenDiff;
-  }
-  if (lenDiff > maxEdits) {
-    return maxEdits + 1;
-  }
 
-  int *prev = sqlite3_malloc((size_t)(nB + 1) * sizeof(int));
-  int *curr = sqlite3_malloc((size_t)(nB + 1) * sizeof(int));
+  int cols = 0;
+  if (ar_checked_int_sum(nB, 1, &cols) != SQLITE_OK) {
+    return -1;
+  }
+  int *prev = ar_malloc_array(cols, sizeof(int));
+  int *curr = ar_malloc_array(cols, sizeof(int));
   if (prev == NULL || curr == NULL) {
     sqlite3_free(prev);
     sqlite3_free(curr);
@@ -54,7 +62,7 @@ static int levenshtein_codepoints(const uint32_t *a, int nA, const uint32_t *b, 
     if (minInRow > maxEdits) {
       sqlite3_free(prev);
       sqlite3_free(curr);
-      return maxEdits + 1;
+      return levenshtein_over_limit(maxEdits);
     }
     int *tmp = prev;
     prev = curr;
@@ -64,6 +72,8 @@ static int levenshtein_codepoints(const uint32_t *a, int nA, const uint32_t *b, 
   int distance = prev[nB];
   sqlite3_free(prev);
   sqlite3_free(curr);
+  if (distance > maxEdits) {
+    return levenshtein_over_limit(maxEdits);
+  }
   return distance;
 }
-

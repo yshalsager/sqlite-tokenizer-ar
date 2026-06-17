@@ -116,7 +116,6 @@ static int parse_simple_query_ast_clauses(
     memcpy(right->value, query + restStart, (size_t)nRest);
     right->value[nRest] = '\0';
     right->nValue = nRest;
-    rightFallbackGroup = 1;
     *outCount = 2;
     return 1;
   }

@@ -40,8 +40,12 @@ static int normalize_text_with_options(
     const NormalizeOptions *options,
     char **zOut,
     int *nOut) {
-  int cap = (nInput <= 0) ? 4 : (nInput * 4 + 4);
-  char *out = sqlite3_malloc((size_t)cap);
+  int cap = 0;
+  int capRc = ar_utf8_expanded_capacity(nInput, &cap);
+  if (capRc != SQLITE_OK) {
+    return capRc;
+  }
+  char *out = sqlite3_malloc64((sqlite3_uint64)cap);
   if (out == NULL) {
     return SQLITE_NOMEM;
   }
@@ -61,12 +65,22 @@ static int normalize_text_with_options(
     }
     char encoded[4];
     int encodedLen = utf8_encode(cp, encoded);
-    if (outPos + encodedLen + 1 > cap) {
-      int nextCap = cap * 2;
-      if (nextCap < outPos + encodedLen + 1) {
-        nextCap = outPos + encodedLen + 1;
+    if (encodedLen <= 0) {
+      continue;
+    }
+    int required = 0;
+    if (ar_checked_int_sum(outPos, encodedLen + 1, &required) != SQLITE_OK) {
+      sqlite3_free(out);
+      return SQLITE_TOOBIG;
+    }
+    if (required > cap) {
+      int nextCap = 0;
+      int growRc = ar_grow_capacity(cap, required, 64, &nextCap);
+      if (growRc != SQLITE_OK) {
+        sqlite3_free(out);
+        return growRc;
       }
-      char *next = sqlite3_realloc(out, (size_t)nextCap);
+      char *next = sqlite3_realloc64(out, (sqlite3_uint64)nextCap);
       if (next == NULL) {
         sqlite3_free(out);
         return SQLITE_NOMEM;

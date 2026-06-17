@@ -14,35 +14,49 @@ static void analyze_terms_buffer_free(AnalyzeTermsBuffer *buffer) {
 }
 
 static int analyze_terms_buffer_append(AnalyzeTermsBuffer *buffer, const char *token, int nToken, int position) {
-  if (buffer->oom) {
-    return SQLITE_NOMEM;
+  if (buffer->rc != SQLITE_OK) {
+    return buffer->rc;
   }
   if (buffer->count >= buffer->cap) {
-    int nextCap = (buffer->cap == 0) ? 8 : buffer->cap * 2;
-    char **nextTerms = sqlite3_realloc(buffer->terms, (size_t)nextCap * sizeof(char *));
-    int *nextLens = sqlite3_realloc(buffer->termLens, (size_t)nextCap * sizeof(int));
-    int *nextPositions = sqlite3_realloc(buffer->positions, (size_t)nextCap * sizeof(int));
-    if (nextTerms == NULL || nextLens == NULL || nextPositions == NULL) {
-      if (nextTerms != NULL) {
-        buffer->terms = nextTerms;
-      }
-      if (nextLens != NULL) {
-        buffer->termLens = nextLens;
-      }
-      if (nextPositions != NULL) {
-        buffer->positions = nextPositions;
-      }
-      buffer->oom = 1;
+    int required = 0;
+    int sumRc = ar_checked_int_sum(buffer->count, 1, &required);
+    if (sumRc != SQLITE_OK) {
+      buffer->rc = sumRc;
+      return sumRc;
+    }
+    int nextCap = 0;
+    int growRc = ar_grow_capacity(buffer->cap, required, 8, &nextCap);
+    if (growRc != SQLITE_OK) {
+      buffer->rc = growRc;
+      return growRc;
+    }
+    char **nextTerms = ar_realloc_array(buffer->terms, nextCap, sizeof(char *));
+    if (nextTerms == NULL) {
+      buffer->rc = SQLITE_NOMEM;
       return SQLITE_NOMEM;
     }
     buffer->terms = nextTerms;
+    int *nextLens = ar_realloc_array(buffer->termLens, nextCap, sizeof(int));
+    if (nextLens == NULL) {
+      buffer->rc = SQLITE_NOMEM;
+      return SQLITE_NOMEM;
+    }
     buffer->termLens = nextLens;
+    int *nextPositions = ar_realloc_array(buffer->positions, nextCap, sizeof(int));
+    if (nextPositions == NULL) {
+      buffer->rc = SQLITE_NOMEM;
+      return SQLITE_NOMEM;
+    }
     buffer->positions = nextPositions;
     buffer->cap = nextCap;
   }
-  char *copy = sqlite3_malloc((size_t)nToken + 1);
+  if (nToken < 0 || nToken == INT_MAX) {
+    buffer->rc = SQLITE_TOOBIG;
+    return SQLITE_TOOBIG;
+  }
+  char *copy = sqlite3_malloc64((sqlite3_uint64)nToken + 1);
   if (copy == NULL) {
-    buffer->oom = 1;
+    buffer->rc = SQLITE_NOMEM;
     return SQLITE_NOMEM;
   }
   memcpy(copy, token, (size_t)nToken);

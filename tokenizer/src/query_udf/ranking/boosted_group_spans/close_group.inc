@@ -20,22 +20,14 @@ static int maybe_append_boosted_group_span(
   while (idx < nQuery && (isdigit((unsigned char)query[idx]) || query[idx] == '.')) {
     idx++;
   }
-  if (idx == boostStart || openIdx < 0) {
+  int nBoostRaw = idx - boostStart;
+  if (nBoostRaw <= 0 || openIdx < 0 || !is_query_boost_boundary(query, idx, nQuery)) {
     *ioIdx = idx;
     return SQLITE_OK;
   }
 
-  int nBoostRaw = idx - boostStart;
-  if (nBoostRaw <= 0 || nBoostRaw >= 64) {
-    *ioIdx = idx;
-    return SQLITE_OK;
-  }
-  char boostRaw[64];
-  memcpy(boostRaw, query + boostStart, (size_t)nBoostRaw);
-  boostRaw[nBoostRaw] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(boostRaw, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
+  double boostValue = 0.0;
+  if (!parse_boost_literal_double_span(query + boostStart, nBoostRaw, &boostValue)) {
     *ioIdx = idx;
     return SQLITE_OK;
   }
@@ -47,13 +39,6 @@ static int maybe_append_boosted_group_span(
     *ioIdx = idx;
     return SQLITE_OK;
   }
-  char boostFmt[64];
-  int nBoostFmt = format_float_like_python(boostValue, boostFmt, (int)sizeof(boostFmt));
-  if (nBoostFmt <= 0) {
-    *ioIdx = idx;
-    return SQLITE_OK;
-  }
-
   const char *scope = NULL;
   int nScope = 0;
   int scopeStart = openIdx;
@@ -110,7 +95,7 @@ static int maybe_append_boosted_group_span(
     rc = json_builder_append_bytes(json, jsonLen, jsonCap, ",\"boost\":", 9);
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(json, jsonLen, jsonCap, boostFmt, nBoostFmt);
+    rc = json_builder_append_boost_literal(json, jsonLen, jsonCap, query + boostStart, nBoostRaw);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_char(json, jsonLen, jsonCap, '}');

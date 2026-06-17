@@ -25,7 +25,7 @@ static int append_whole_scoped_group_json(
     if (boost == NULL) {
       rc = json_builder_append_bytes(json, jsonLen, jsonCap, "null", 4);
     } else {
-      rc = json_builder_append_bytes(json, jsonLen, jsonCap, boost, nBoost);
+      rc = json_builder_append_boost_literal(json, jsonLen, jsonCap, boost, nBoost);
     }
   }
   if (rc == SQLITE_OK) {

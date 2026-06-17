@@ -1,5 +1,7 @@
 #include <sqlite3ext.h>
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>

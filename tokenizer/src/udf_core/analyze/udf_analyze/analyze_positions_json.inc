@@ -25,9 +25,16 @@ static void udf_sqlite_tokenizer_ar_analyze_positions_json(sqlite3_context *cont
       text,
       nText,
       analyze_collect_token_with_position);
-  if (rc != SQLITE_OK || terms.oom) {
+  if (rc == SQLITE_OK) {
+    rc = terms.rc;
+  }
+  if (rc != SQLITE_OK) {
     analyze_terms_buffer_free(&terms);
-    sqlite3_result_error_nomem(context);
+    if (rc == SQLITE_TOOBIG) {
+      sqlite3_result_error_toobig(context);
+    } else {
+      sqlite3_result_error_nomem(context);
+    }
     return;
   }
 

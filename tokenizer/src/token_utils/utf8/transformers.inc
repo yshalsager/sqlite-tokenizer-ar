@@ -19,6 +19,9 @@ static int transform_token_utf8(const char *in, int nIn, char *out, int outCap, 
 
     char encoded[4];
     int encodedLen = utf8_encode(cp, encoded);
+    if (encodedLen <= 0) {
+      continue;
+    }
     if (outPos + encodedLen > outCap) {
       break;
     }

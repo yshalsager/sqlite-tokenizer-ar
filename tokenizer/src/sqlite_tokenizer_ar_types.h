@@ -32,7 +32,7 @@ typedef struct AnalyzeTermsBuffer {
   int *positions;
   int count;
   int cap;
-  int oom;
+  int rc;
 } AnalyzeTermsBuffer;
 
 typedef struct NormalizeOptions {

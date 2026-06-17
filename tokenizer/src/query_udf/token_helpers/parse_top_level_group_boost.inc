@@ -34,7 +34,7 @@ static void udf_sqlite_tokenizer_ar_parse_top_level_group_boost_json(sqlite3_con
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"boost\":", 9);
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_char(&json, &jsonLen, &jsonCap, '}');

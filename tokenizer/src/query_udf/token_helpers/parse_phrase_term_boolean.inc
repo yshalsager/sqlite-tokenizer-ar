@@ -64,7 +64,7 @@ static int parse_phrase_term_boolean_phrase_clause(
     ParsedPhraseTermBooleanClause *out,
     int *outNext) {
   memset(out, 0, sizeof(*out));
-  out->nBoost = format_float_like_python(1.0, out->boostBuf, (int)sizeof(out->boostBuf));
+  out->nBoost = copy_default_boost_literal(out->boostBuf, (int)sizeof(out->boostBuf));
   if (out->nBoost <= 0) {
     return 0;
   }
@@ -89,16 +89,9 @@ static int parse_phrase_term_boolean_phrase_clause(
     if (idx <= slopStart) {
       return 0;
     }
-    char slopBuf[32];
     int nSlop = idx - slopStart;
-    if (nSlop <= 0 || nSlop >= (int)sizeof(slopBuf)) {
+    if (!parse_nonnegative_int_span(query + slopStart, nSlop, INT_MAX, &out->slop)) {
       return 0;
-    }
-    memcpy(slopBuf, query + slopStart, (size_t)nSlop);
-    slopBuf[nSlop] = '\0';
-    out->slop = atoi(slopBuf);
-    if (out->slop < 0) {
-      out->slop = 0;
     }
   }
   if (idx < end && query[idx] == '^') {
@@ -108,18 +101,7 @@ static int parse_phrase_term_boolean_phrase_clause(
       return 0;
     }
     int nRawBoost = boostEnd - idx;
-    if (nRawBoost <= 0 || nRawBoost >= 64) {
-      return 0;
-    }
-    char rawBoost[64];
-    memcpy(rawBoost, query + idx, (size_t)nRawBoost);
-    rawBoost[nRawBoost] = '\0';
-    char *endPtr = NULL;
-    double boostValue = strtod(rawBoost, &endPtr);
-    if (endPtr == NULL || *endPtr != '\0') {
-      return 0;
-    }
-    int nFmt = format_float_like_python(boostValue, out->boostBuf, (int)sizeof(out->boostBuf));
+    int nFmt = copy_boost_literal_span(query + idx, nRawBoost, out->boostBuf, (int)sizeof(out->boostBuf), NULL);
     if (nFmt <= 0) {
       return 0;
     }
@@ -139,7 +121,7 @@ static int parse_phrase_term_boolean_term_clause(
     ParsedPhraseTermBooleanClause *out,
     int *outNext) {
   memset(out, 0, sizeof(*out));
-  out->nBoost = format_float_like_python(1.0, out->boostBuf, (int)sizeof(out->boostBuf));
+  out->nBoost = copy_default_boost_literal(out->boostBuf, (int)sizeof(out->boostBuf));
   if (out->nBoost <= 0) {
     return 0;
   }
@@ -175,18 +157,7 @@ static int parse_phrase_term_boolean_term_clause(
     int boostEnd = 0;
     if (parse_decimal_number_span(query, boostStart, tokenEnd, &boostEnd) && boostEnd == tokenEnd) {
       int nRawBoost = tokenEnd - boostStart;
-      if (nRawBoost <= 0 || nRawBoost >= 64) {
-        return 0;
-      }
-      char rawBoost[64];
-      memcpy(rawBoost, query + boostStart, (size_t)nRawBoost);
-      rawBoost[nRawBoost] = '\0';
-      char *endPtr = NULL;
-      double boostValue = strtod(rawBoost, &endPtr);
-      if (endPtr == NULL || *endPtr != '\0') {
-        return 0;
-      }
-      int nFmt = format_float_like_python(boostValue, out->boostBuf, (int)sizeof(out->boostBuf));
+      int nFmt = copy_boost_literal_span(query + boostStart, nRawBoost, out->boostBuf, (int)sizeof(out->boostBuf), NULL);
       if (nFmt <= 0) {
         return 0;
       }
@@ -378,7 +349,7 @@ static void udf_sqlite_tokenizer_ar_parse_phrase_term_boolean_json(sqlite3_conte
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"left_boost\":", (int)strlen(",\"left_boost\":"));
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, left.boostBuf, left.nBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, left.boostBuf, left.nBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"right_scope\":", (int)strlen(",\"right_scope\":"));
@@ -408,7 +379,7 @@ static void udf_sqlite_tokenizer_ar_parse_phrase_term_boolean_json(sqlite3_conte
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"right_boost\":", (int)strlen(",\"right_boost\":"));
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, right.boostBuf, right.nBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, right.boostBuf, right.nBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_char(&json, &jsonLen, &jsonCap, '}');

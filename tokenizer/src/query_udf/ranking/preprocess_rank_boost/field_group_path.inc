@@ -55,7 +55,7 @@ static int try_extract_rank_boost_whole_field_group(
   if (!scopeMatches) {
     *rankingQueryOut = "__nohit__";
     *nRankingQueryOut = 9;
-    *nBoostFactorOut = format_float_like_python(1.0, boostFactorBuf, nBoostFactorBuf);
+    *nBoostFactorOut = copy_default_boost_literal(boostFactorBuf, nBoostFactorBuf);
     return (*nBoostFactorOut > 0) ? 1 : -1;
   }
 
@@ -69,7 +69,7 @@ static int try_extract_rank_boost_whole_field_group(
     boostFactorBuf[nBoost] = '\0';
     *nBoostFactorOut = nBoost;
   } else {
-    *nBoostFactorOut = format_float_like_python(1.0, boostFactorBuf, nBoostFactorBuf);
+    *nBoostFactorOut = copy_default_boost_literal(boostFactorBuf, nBoostFactorBuf);
   }
   return (*nBoostFactorOut > 0) ? 1 : -1;
 }

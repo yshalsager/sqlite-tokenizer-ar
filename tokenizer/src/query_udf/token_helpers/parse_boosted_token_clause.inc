@@ -79,19 +79,9 @@ static int parse_boosted_token_clause_strip_boost(
     return -1;
   }
 
-  char numBuf[64];
   int nNum = nRaw - boostStart;
-  if (nNum <= 0 || nNum >= (int)sizeof(numBuf)) {
-    return -1;
-  }
-  memcpy(numBuf, raw + boostStart, (size_t)nNum);
-  numBuf[nNum] = '\0';
-  char *endPtr = NULL;
-  double boostValue = strtod(numBuf, &endPtr);
-  if (endPtr == NULL || *endPtr != '\0') {
-    return -1;
-  }
-  int nBoost = format_float_like_python(boostValue, boostBuf, boostBufCap);
+  double boostValue = 0.0;
+  int nBoost = copy_boost_literal_span(raw + boostStart, nNum, boostBuf, boostBufCap, &boostValue);
   if (nBoost <= 0) {
     return -1;
   }
@@ -199,7 +189,7 @@ static void udf_sqlite_tokenizer_ar_parse_boosted_token_clause_json(sqlite3_cont
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"boost\":", 9);
   }
   if (rc == SQLITE_OK) {
-    rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
+    rc = json_builder_append_boost_literal(&json, &jsonLen, &jsonCap, boostBuf, nBoost);
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_bytes(&json, &jsonLen, &jsonCap, ",\"has_wildcard\":", 16);

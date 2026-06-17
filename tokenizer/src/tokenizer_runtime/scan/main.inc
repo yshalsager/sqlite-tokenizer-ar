@@ -29,9 +29,13 @@ static int arabic_tokenize(
     idx = end;
 
     int rawLen = end - start;
-    int bufCap = rawLen * 4 + 4;
-    char *folded = sqlite3_malloc(bufCap);
-    char *normalized = sqlite3_malloc(bufCap);
+    int bufCap = 0;
+    int capRc = ar_utf8_expanded_capacity(rawLen, &bufCap);
+    if (capRc != SQLITE_OK) {
+      return capRc;
+    }
+    char *folded = sqlite3_malloc64((sqlite3_uint64)bufCap);
+    char *normalized = sqlite3_malloc64((sqlite3_uint64)bufCap);
     if (folded == NULL || normalized == NULL) {
       sqlite3_free(folded);
       sqlite3_free(normalized);
