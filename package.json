@@ -1,6 +1,6 @@
 {
   "name": "@yshalsager/sqlite-tokenizer-ar-wasm",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"
