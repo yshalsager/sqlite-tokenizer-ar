@@ -10,7 +10,9 @@ import struct
 
 from sqlite_query_compat import (
     BOOL_OPS,
+    BOOST_NUMBER_MAX_LEN,
     BOOST_NUMBER_RE,
+    BOOST_NUMBER_SHAPE_RE,
     BOOSTED_PHRASE_RE,
     EMPTY_TERM_SENTINEL,
     QUOTED_QUERY_CONTENT_RE,
@@ -1305,10 +1307,72 @@ def unescape_query_escapes_reference(value: str) -> str:
     return ''.join(out)
 
 
-def parse_boost_number_reference(value: str) -> float | None:
-    if re.fullmatch(BOOST_NUMBER_RE, value) is None:
+def parse_bounded_nonnegative_int_reference(value: str, max_value: int = 2_147_483_647) -> int | None:
+    if value == '' or not value.isdigit() or max_value < 0:
         return None
-    return float(value)
+    parsed = 0
+    for ch in value:
+        digit = ord(ch) - ord('0')
+        if parsed > max_value // 10 or (parsed == max_value // 10 and digit > max_value % 10):
+            return None
+        parsed = parsed * 10 + digit
+    return parsed
+
+
+def parse_clamped_nonnegative_int_reference(value: str, max_value: int) -> int | None:
+    if value == '' or not value.isdigit() or max_value < 0:
+        return None
+    parsed = 0
+    saturated = False
+    for ch in value:
+        if saturated:
+            continue
+        digit = ord(ch) - ord('0')
+        if parsed > max_value // 10 or (parsed == max_value // 10 and digit > max_value % 10):
+            parsed = max_value
+            saturated = True
+        else:
+            parsed = parsed * 10 + digit
+    return parsed
+
+
+def parse_optional_slop_reference(value: str | None) -> int | None:
+    if value is None:
+        return 0
+    return parse_bounded_nonnegative_int_reference(value)
+
+
+def read_optional_slop_suffix_reference(query: str, index: int) -> tuple[int | None, int]:
+    if index >= len(query) or query[index] != '~':
+        return None, index
+    index += 1
+    slop_start = index
+    while index < len(query) and query[index].isdigit():
+        index += 1
+    if index == slop_start or (index < len(query) and (not query[index].isspace()) and query[index] not in {'^', ')'}):
+        raise SearchCompileError('invalid phrase slop')
+    slop = parse_bounded_nonnegative_int_reference(query[slop_start:index])
+    if slop is None:
+        raise SearchCompileError('invalid phrase slop')
+    return slop, index
+
+
+def parse_optional_boost_reference(value: str | None) -> float | None:
+    if value is None:
+        return 1.0
+    return parse_boost_number_reference(value)
+
+
+def parse_boost_number_reference(value: str) -> float | None:
+    if len(value) > BOOST_NUMBER_MAX_LEN or re.fullmatch(BOOST_NUMBER_RE, value) is None:
+        return None
+    try:
+        parsed = float(value)
+    except OverflowError:
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
 
 
 def parse_scoped_token_reference(token: str) -> tuple[str | None, str]:
@@ -1335,11 +1399,9 @@ def parse_fuzzy_token_reference(token: str) -> tuple[str, int] | None:
     edits_raw = token[split_at + 1:]
     if edits_raw != '' and (not edits_raw.isdigit()):
         return None
-    edits = 2 if edits_raw == '' else int(edits_raw)
-    if edits < 0:
-        edits = 0
-    if edits > 2:
-        edits = 2
+    edits = 2 if edits_raw == '' else parse_clamped_nonnegative_int_reference(edits_raw, 2)
+    if edits is None:
+        return None
     return base, edits
 
 
@@ -1353,30 +1415,44 @@ def strip_boost_reference(token: str) -> tuple[str, float | None]:
         return token, None
     base = token[:split_at]
     boost_raw = token[split_at + 1:]
-    if re.fullmatch(BOOST_NUMBER_RE, boost_raw) is None:
-        return token, None
-    boost = float(boost_raw)
+    boost = parse_boost_number_reference(boost_raw)
+    if boost is None:
+        if re.fullmatch(BOOST_NUMBER_SHAPE_RE, boost_raw) is None:
+            return token, None
+        raise SearchCompileError('invalid boosted token')
     if base == '':
         raise SearchCompileError('invalid boosted token')
     return base, boost
 
 
-def parse_group_boost_suffix_reference(query: str, start: int) -> tuple[float, int] | None:
+def read_boost_suffix_reference(query: str, start: int, error_message: str) -> tuple[str, int] | None:
     if start >= len(query) or query[start] != '^':
         return None
     index = start + 1
     boost_start = index
     while index < len(query) and (query[index].isdigit() or query[index] == '.'):
         index += 1
-    if index == boost_start:
-        raise SearchCompileError('invalid group boost')
-    parsed_boost = parse_boost_number_reference(query[boost_start:index])
+    if (
+        index == boost_start
+        or (index < len(query) and (not query[index].isspace()) and query[index] != ')')
+        or parse_boost_number_reference(query[boost_start:index]) is None
+    ):
+        raise SearchCompileError(error_message)
+    return query[boost_start:index], index
+
+
+def parse_group_boost_suffix_reference(query: str, start: int) -> tuple[float, int] | None:
+    parsed = read_boost_suffix_reference(query, start, 'invalid group boost')
+    if parsed is None:
+        return None
+    boost_raw, index = parsed
+    parsed_boost = parse_boost_number_reference(boost_raw)
     if parsed_boost is None:
         raise SearchCompileError('invalid group boost')
     return parsed_boost, index
 
 
-def parse_field_group_segment_reference(query: str, start: int) -> tuple[str, str, float | None, int] | None:
+def parse_field_group_segment_parts_reference(query: str, start: int) -> tuple[str, str, str | None, int] | None:
     field_sep = find_unescaped_char_from_reference(query, ':', start)
     if field_sep <= start:
         return None
@@ -1409,18 +1485,22 @@ def parse_field_group_segment_reference(query: str, start: int) -> tuple[str, st
 
     inner_query = query[field_sep + 2:index]
     index += 1
-    boost: float | None = None
-    if index < len(query) and query[index] == '^':
-        index += 1
-        boost_start = index
-        while index < len(query) and (query[index].isdigit() or query[index] == '.'):
-            index += 1
-        if index > boost_start:
-            parsed_boost = parse_boost_number_reference(query[boost_start:index])
-            if parsed_boost is None:
-                raise SearchCompileError('invalid group boost')
-            boost = parsed_boost
+    boost_raw: str | None = None
+    parsed_boost = read_boost_suffix_reference(query, index, 'invalid group boost')
+    if parsed_boost is not None:
+        boost_raw, index = parsed_boost
 
+    return scope, inner_query, boost_raw, index
+
+
+def parse_field_group_segment_reference(query: str, start: int) -> tuple[str, str, float | None, int] | None:
+    parsed = parse_field_group_segment_parts_reference(query, start)
+    if parsed is None:
+        return None
+    scope, inner_query, boost_raw, index = parsed
+    boost = None if boost_raw is None else parse_boost_number_reference(boost_raw)
+    if boost_raw is not None and boost is None:
+        raise SearchCompileError('invalid group boost')
     return scope, inner_query, boost, index
 
 
@@ -1451,9 +1531,10 @@ def parse_top_level_group_boost(query: str) -> tuple[str, float] | None:
     if close_index + 2 > len(raw) or raw[close_index + 1] != '^':
         return None
     boost_raw = raw[close_index + 2:]
-    if boost_raw == '' or re.fullmatch(BOOST_NUMBER_RE, boost_raw) is None:
+    boost = parse_boost_number_reference(boost_raw)
+    if boost is None:
         return None
-    return raw[1:close_index], float(boost_raw)
+    return raw[1:close_index], boost
 
 
 def parse_whole_scoped_group(query: str) -> tuple[str, str, float | None] | None:
@@ -1524,21 +1605,50 @@ def parse_simple_phrase_query_python(query: str) -> tuple[str, int] | None:
     if match is None:
         return None
     phrase_text = unescape_query_escapes_reference(match.group(1))
-    slop = 0
-    if match.group(2) is not None:
-        slop = max(0, int(match.group(2)))
+    slop = parse_optional_slop_reference(match.group(2))
+    if slop is None:
+        return None
     return phrase_text, slop
 
 
 def parse_single_phrase_clause_python(query: str) -> tuple[str | None, str, int, float] | None:
-    scope, scoped_raw = parse_scoped_token_reference(query.strip())
-    phrase_raw, maybe_boost = strip_boost_reference(scoped_raw)
-    parsed_phrase = parse_simple_phrase_query_python(phrase_raw)
-    if parsed_phrase is None:
+    raw = query.strip()
+    scope, scoped_raw = parse_scoped_token_reference(raw)
+    if not scoped_raw.startswith('"'):
         return None
-    phrase_text, slop = parsed_phrase
-    boost = 1.0 if maybe_boost is None else float(maybe_boost)
+    try:
+        phrase_text, index = read_quoted_segment_reference(scoped_raw, 1)
+        slop, index = read_optional_slop_suffix_reference(scoped_raw, index)
+        if slop is None:
+            slop = 0
+        boost = 1.0
+        parsed_boost = read_boost_suffix_reference(scoped_raw, index, 'invalid boosted token')
+        if parsed_boost is not None:
+            boost_raw, index = parsed_boost
+            parsed = parse_boost_number_reference(boost_raw)
+            if parsed is None:
+                return None
+            boost = float(parsed)
+    except SearchCompileError:
+        return None
+    if scoped_raw[index:].strip() != '':
+        return None
     return scope, phrase_text, slop, boost
+
+
+def parse_term_and_boost_reference(term: str, boost_raw: str | None) -> tuple[str, float] | None:
+    if boost_raw is not None:
+        boost = parse_boost_number_reference(boost_raw)
+        if boost is None:
+            return None
+        return term, boost
+    try:
+        base, maybe_boost = strip_boost_reference(term)
+    except SearchCompileError:
+        return None
+    if maybe_boost is not None:
+        return base, maybe_boost
+    return term, 1.0
 
 
 def parse_phrase_term_boolean_python(query: str) -> dict | None:
@@ -1554,19 +1664,25 @@ def parse_phrase_term_boolean_python(query: str) -> dict | None:
         flags=re.IGNORECASE,
     )
     if phrase_then_phrase is not None:
+        left_slop = parse_optional_slop_reference(phrase_then_phrase.group(3))
+        left_boost = parse_optional_boost_reference(phrase_then_phrase.group(4))
+        right_slop = parse_optional_slop_reference(phrase_then_phrase.group(8))
+        right_boost = parse_optional_boost_reference(phrase_then_phrase.group(9))
+        if left_slop is None or left_boost is None or right_slop is None or right_boost is None:
+            return None
         return {
             'shape': 'phrase_phrase',
             'op': phrase_then_phrase.group(5).upper(),
             'left_scope': None if phrase_then_phrase.group(1) is None else phrase_then_phrase.group(1).lower(),
             'left_term': None,
             'left_phrase': unescape_query_escapes_reference(phrase_then_phrase.group(2)),
-            'left_slop': 0 if phrase_then_phrase.group(3) is None else max(0, int(phrase_then_phrase.group(3))),
-            'left_boost': 1.0 if phrase_then_phrase.group(4) is None else float(phrase_then_phrase.group(4)),
+            'left_slop': left_slop,
+            'left_boost': left_boost,
             'right_scope': None if phrase_then_phrase.group(6) is None else phrase_then_phrase.group(6).lower(),
             'right_term': None,
             'right_phrase': unescape_query_escapes_reference(phrase_then_phrase.group(7)),
-            'right_slop': 0 if phrase_then_phrase.group(8) is None else max(0, int(phrase_then_phrase.group(8))),
-            'right_boost': 1.0 if phrase_then_phrase.group(9) is None else float(phrase_then_phrase.group(9)),
+            'right_slop': right_slop,
+            'right_boost': right_boost,
         }
 
     phrase_then_term = re.fullmatch(
@@ -1577,6 +1693,12 @@ def parse_phrase_term_boolean_python(query: str) -> dict | None:
         flags=re.IGNORECASE,
     )
     if phrase_then_term is not None:
+        left_slop = parse_optional_slop_reference(phrase_then_term.group(3))
+        left_boost = parse_optional_boost_reference(phrase_then_term.group(4))
+        right_parsed = parse_term_and_boost_reference(phrase_then_term.group(7), phrase_then_term.group(8))
+        if left_slop is None or left_boost is None or right_parsed is None:
+            return None
+        right_term, right_boost = right_parsed
         right_scope_raw = phrase_then_term.group(6)
         return {
             'shape': 'phrase_term',
@@ -1584,13 +1706,13 @@ def parse_phrase_term_boolean_python(query: str) -> dict | None:
             'left_scope': None if phrase_then_term.group(1) is None else phrase_then_term.group(1).lower(),
             'left_term': None,
             'left_phrase': unescape_query_escapes_reference(phrase_then_term.group(2)),
-            'left_slop': 0 if phrase_then_term.group(3) is None else max(0, int(phrase_then_term.group(3))),
-            'left_boost': 1.0 if phrase_then_term.group(4) is None else float(phrase_then_term.group(4)),
+            'left_slop': left_slop,
+            'left_boost': left_boost,
             'right_scope': None if right_scope_raw is None else right_scope_raw[:-1].lower(),
-            'right_term': phrase_then_term.group(7),
+            'right_term': right_term,
             'right_phrase': None,
             'right_slop': 0,
-            'right_boost': 1.0 if phrase_then_term.group(8) is None else float(phrase_then_term.group(8)),
+            'right_boost': right_boost,
         }
 
     term_then_phrase = re.fullmatch(
@@ -1601,24 +1723,29 @@ def parse_phrase_term_boolean_python(query: str) -> dict | None:
         flags=re.IGNORECASE,
     )
     if term_then_phrase is not None:
+        left_parsed = parse_term_and_boost_reference(term_then_phrase.group(2), term_then_phrase.group(3))
+        right_slop = parse_optional_slop_reference(term_then_phrase.group(7))
+        right_boost = parse_optional_boost_reference(term_then_phrase.group(8))
+        if left_parsed is None or right_slop is None or right_boost is None:
+            return None
+        left_term, left_boost = left_parsed
         left_scope_raw = term_then_phrase.group(1)
         return {
             'shape': 'term_phrase',
             'op': term_then_phrase.group(4).upper(),
             'left_scope': None if left_scope_raw is None else left_scope_raw[:-1].lower(),
-            'left_term': term_then_phrase.group(2),
+            'left_term': left_term,
             'left_phrase': None,
             'left_slop': 0,
-            'left_boost': 1.0 if term_then_phrase.group(3) is None else float(term_then_phrase.group(3)),
+            'left_boost': left_boost,
             'right_scope': None if term_then_phrase.group(5) is None else term_then_phrase.group(5).lower(),
             'right_term': None,
             'right_phrase': unescape_query_escapes_reference(term_then_phrase.group(6)),
-            'right_slop': 0 if term_then_phrase.group(7) is None else max(0, int(term_then_phrase.group(7))),
-            'right_boost': 1.0 if term_then_phrase.group(8) is None else float(term_then_phrase.group(8)),
+            'right_slop': right_slop,
+            'right_boost': right_boost,
         }
 
     return None
-
 
 def levenshtein_distance(a: str, b: str, max_edits: int) -> int:
     if a == b:
@@ -1638,7 +1765,10 @@ def levenshtein_distance(a: str, b: str, max_edits: int) -> int:
         if min_in_row > max_edits:
             return max_edits + 1
         previous = current
-    return previous[-1]
+    distance = previous[-1]
+    if distance > max_edits:
+        return max_edits + 1
+    return distance
 
 
 def extract_boosted_phrase_spans_python(query: str) -> list[tuple[str | None, str, int, float]]:
@@ -1647,11 +1777,13 @@ def extract_boosted_phrase_spans_python(query: str) -> list[tuple[str | None, st
         phrase_value = unescape_query_escapes_reference(match.group('phrase')).strip()
         if phrase_value == '':
             continue
-        boost = float(match.group('boost'))
-        if abs(boost - 1.0) < 1e-12:
+        boost = parse_boost_number_reference(match.group('boost'))
+        if boost is None or abs(boost - 1.0) < 1e-12:
             continue
         slop_raw = match.group('slop')
-        explicit_slop = 0 if slop_raw is None else max(0, int(slop_raw))
+        explicit_slop = parse_optional_slop_reference(slop_raw)
+        if explicit_slop is None:
+            continue
         scope_raw = match.group('scope')
         scope = None if scope_raw is None else scope_raw.lower()
         out.append((scope, phrase_value, explicit_slop, boost))
@@ -1666,6 +1798,9 @@ def extract_boosted_group_spans_python(query: str, runtime_field: str) -> list[t
     index = 0
     while index < len(raw):
         ch = raw[index]
+        if ch == '\\' and index + 1 < len(raw):
+            index += 2
+            continue
         if ch == '"':
             in_quote = not in_quote
             index += 1
@@ -1688,6 +1823,8 @@ def extract_boosted_group_spans_python(query: str, runtime_field: str) -> list[t
             while index < len(raw) and (raw[index].isdigit() or raw[index] == '.'):
                 index += 1
             if index == boost_start:
+                continue
+            if index < len(raw) and (not raw[index].isspace()) and raw[index] != ')':
                 continue
             if open_index < 0:
                 continue
@@ -1832,31 +1969,23 @@ def split_query_reference(query: str) -> list[tuple[str, str]]:
                     _boost_value, i = parsed_group_boost
             continue
         if ch in {'+', '-'} and i + 1 < len(query):
-            field_group = parse_field_group_segment_reference(query, i + 1)
+            field_group = parse_field_group_segment_parts_reference(query, i + 1)
             if field_group is not None:
-                scope, inner_query, boost, next_index = field_group
+                scope, inner_query, boost_raw, next_index = field_group
                 tokens.append(('token', ch))
-                if boost is None:
+                if boost_raw is None:
                     tokens.append(('field_group', f'{scope}\t{inner_query}'))
                 else:
-                    tokens.append(('field_group_boost', f'{scope}\t{boost}\t{inner_query}'))
+                    tokens.append(('field_group_boost', f'{scope}\t{boost_raw}\t{inner_query}'))
                 i = next_index
                 continue
 
             if query[i + 1] == '"':
                 phrase, i = read_quoted_segment_reference(query, i + 2)
-                slop: int | None = None
-                if i < len(query) and query[i] == '~':
-                    i += 1
-                    slop_start = i
-                    while i < len(query) and query[i].isdigit():
-                        i += 1
-                    if i > slop_start:
-                        slop = int(query[slop_start:i])
-                if i < len(query) and query[i] == '^':
-                    i += 1
-                    while i < len(query) and (query[i].isdigit() or query[i] == '.'):
-                        i += 1
+                slop, i = read_optional_slop_suffix_reference(query, i)
+                parsed_boost = read_boost_suffix_reference(query, i, 'invalid phrase boost')
+                if parsed_boost is not None:
+                    _boost_raw, i = parsed_boost
                 tokens.append(('token', ch))
                 if slop is None:
                     tokens.append(('phrase', phrase))
@@ -1869,18 +1998,10 @@ def split_query_reference(query: str) -> list[tuple[str, str]]:
                 field_candidate = query[i + 1:field_sep]
                 if field_candidate.lower() in {'page', 'title'} and field_sep + 1 < len(query) and query[field_sep + 1] == '"':
                     phrase, i = read_quoted_segment_reference(query, field_sep + 2)
-                    slop = None
-                    if i < len(query) and query[i] == '~':
-                        i += 1
-                        slop_start = i
-                        while i < len(query) and query[i].isdigit():
-                            i += 1
-                        if i > slop_start:
-                            slop = int(query[slop_start:i])
-                    if i < len(query) and query[i] == '^':
-                        i += 1
-                        while i < len(query) and (query[i].isdigit() or query[i] == '.'):
-                            i += 1
+                    slop, i = read_optional_slop_suffix_reference(query, i)
+                    parsed_boost = read_boost_suffix_reference(query, i, 'invalid phrase boost')
+                    if parsed_boost is not None:
+                        _boost_raw, i = parsed_boost
                     tokens.append(('token', ch))
                     if slop is None:
                         tokens.append(('field_phrase', f'{field_candidate}:{phrase}'))
@@ -1889,31 +2010,23 @@ def split_query_reference(query: str) -> list[tuple[str, str]]:
                     continue
         if ch == '"':
             phrase, i = read_quoted_segment_reference(query, i + 1)
-            slop: int | None = None
-            if i < len(query) and query[i] == '~':
-                i += 1
-                slop_start = i
-                while i < len(query) and query[i].isdigit():
-                    i += 1
-                if i > slop_start:
-                    slop = int(query[slop_start:i])
-            if i < len(query) and query[i] == '^':
-                i += 1
-                while i < len(query) and (query[i].isdigit() or query[i] == '.'):
-                    i += 1
+            slop, i = read_optional_slop_suffix_reference(query, i)
+            parsed_boost = read_boost_suffix_reference(query, i, 'invalid phrase boost')
+            if parsed_boost is not None:
+                _boost_raw, i = parsed_boost
             if slop is None:
                 tokens.append(('phrase', phrase))
             else:
                 tokens.append(('phrase_slop', f'{slop}\t{phrase}'))
             continue
 
-        field_group = parse_field_group_segment_reference(query, i)
+        field_group = parse_field_group_segment_parts_reference(query, i)
         if field_group is not None:
-            scope, inner_query, boost, next_index = field_group
-            if boost is None:
+            scope, inner_query, boost_raw, next_index = field_group
+            if boost_raw is None:
                 tokens.append(('field_group', f'{scope}\t{inner_query}'))
             else:
-                tokens.append(('field_group_boost', f'{scope}\t{boost}\t{inner_query}'))
+                tokens.append(('field_group_boost', f'{scope}\t{boost_raw}\t{inner_query}'))
             i = next_index
             continue
 
@@ -1922,18 +2035,10 @@ def split_query_reference(query: str) -> list[tuple[str, str]]:
             field_candidate = query[i:field_sep]
             if field_candidate.lower() in {'page', 'title'} and field_sep + 1 < len(query) and query[field_sep + 1] == '"':
                 phrase, i = read_quoted_segment_reference(query, field_sep + 2)
-                slop = None
-                if i < len(query) and query[i] == '~':
-                    i += 1
-                    slop_start = i
-                    while i < len(query) and query[i].isdigit():
-                        i += 1
-                    if i > slop_start:
-                        slop = int(query[slop_start:i])
-                if i < len(query) and query[i] == '^':
-                    i += 1
-                    while i < len(query) and (query[i].isdigit() or query[i] == '.'):
-                        i += 1
+                slop, i = read_optional_slop_suffix_reference(query, i)
+                parsed_boost = read_boost_suffix_reference(query, i, 'invalid phrase boost')
+                if parsed_boost is not None:
+                    _boost_raw, i = parsed_boost
                 if slop is None:
                     tokens.append(('field_phrase', f'{field_candidate}:{phrase}'))
                 else:

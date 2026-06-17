@@ -12,10 +12,13 @@ from pathlib import Path
 BOOL_OPS = {'AND', 'OR', 'NOT'}
 EMPTY_TERM_SENTINEL = '\ue000'
 SOURCE_POSITIONS_CACHE_MAX = 50000
-BOOST_NUMBER_RE = r'[0-9]+(?:\.[0-9]+)?'
+BOOST_NUMBER_MAX_LEN = 63
+BOOST_NUMBER_SHAPE_RE = r'[0-9]+(?:\.[0-9]+)?'
+BOOST_NUMBER_RE = rf'(?=[0-9.]{{1,{BOOST_NUMBER_MAX_LEN}}}(?![0-9.])){BOOST_NUMBER_SHAPE_RE}'
+BOOST_NUMBER_SCAN_BOUNDARY_RE = r'(?=$|\s|\))'
 QUOTED_QUERY_CONTENT_RE = r'(?:\\.|[^"\\])*'
 BOOSTED_PHRASE_RE = re.compile(
-    rf'(?:(?P<scope>page|title):)?"(?P<phrase>{QUOTED_QUERY_CONTENT_RE})"(?:~(?P<slop>[0-9]+))?(?<!\\)\^(?P<boost>{BOOST_NUMBER_RE})',
+    rf'(?:(?P<scope>page|title):)?"(?P<phrase>{QUOTED_QUERY_CONTENT_RE})"(?:~(?P<slop>[0-9]+))?(?<!\\)\^(?P<boost>{BOOST_NUMBER_RE}){BOOST_NUMBER_SCAN_BOUNDARY_RE}',
     flags=re.IGNORECASE,
 )
 

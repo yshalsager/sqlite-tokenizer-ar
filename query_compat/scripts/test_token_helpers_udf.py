@@ -82,6 +82,9 @@ def main() -> None:
             '"طريق"^4',
             'كتاب\\^2',
             'كتاب^x',
+            'كتاب^.5',
+            'كتاب^2e3',
+            'كتاب^' + '0' * 63,
         ]
         for token in boost_cases:
             expected = strip_boost(token)
@@ -92,7 +95,7 @@ def main() -> None:
                     f'token={token!r} expected={expected!r} actual={actual!r}'
                 )
 
-        invalid_cases = ['^2', '^2.5']
+        invalid_cases = ['^2', '^2.5', 'term^' + '0' * 64, 'term^' + '9' * 400]
         for token in invalid_cases:
             py_failed = False
             c_failed = False
@@ -112,6 +115,7 @@ def main() -> None:
 
         boosted_token_clause_cases = [
             ('كتاب^2', 'page'),
+            ('كتاب^1.234567890123456', 'page'),
             ('كتاب^2', 'both'),
             ('page:كتاب^2', 'page'),
             ('page:كتاب^2', 'both'),
@@ -126,6 +130,7 @@ def main() -> None:
             ('كتاب^1', 'page'),
             ('كتاب^x', 'page'),
             ('^2', 'page'),
+            ('كتاب^' + '0' * 64, 'page'),
         ]
         for token, runtime_field in boosted_token_clause_cases:
             py_failed = False
@@ -173,6 +178,10 @@ def main() -> None:
             'كتاب~1',
             'كتاب~2',
             'كتاب~3',
+            'كتاب~9',
+            'كتاب~10',
+            'كتاب~99',
+            'كتاب~' + '9' * 128,
             'كتاب\\~2',
             'كتاب~x',
             '~2',
@@ -194,6 +203,9 @@ def main() -> None:
             '(المنصور OR المصور)',
             '((المنصور OR المصور)^2 AND باب)^3',
             '("\\\"طريق العلم\\\"")^4',
+            '(المنصور)^' + '0' * 63,
+            '(المنصور)^1.234567890123456',
+            '(المنصور)^' + '0' * 64,
         ]
         for query in top_group_cases:
             expected = parse_top_level_group_boost(query)
@@ -207,6 +219,7 @@ def main() -> None:
         whole_scoped_group_cases = [
             'title:(المنصور OR المصور)',
             'title:(المنصور OR المصور)^2',
+            'title:(المنصور OR المصور)^1.234567890123456',
             'page:("طريق العلم" OR "طريق الادب")',
             'title:(المنصور OR المصور) AND باب',
             '+title:(المنصور OR المصور)',
@@ -258,6 +271,10 @@ def main() -> None:
             ('باب AND ("هذا كتاب" OR فصل)^2', 'title'),
             ('title:("هذا كتاب" OR فصل)^2 AND باب', 'title'),
             ('title:("هذا كتاب" OR فصل)^2 AND باب', 'page'),
+            ('باب AND ("هذا كتاب" OR فصل)^.5', 'page'),
+            ('باب AND ("هذا كتاب" OR فصل)^2e3', 'page'),
+            (r'باب AND ("هذا \" ) \" كتاب" OR فصل)^2', 'page'),
+            (r'باب AND \("هذا كتاب" OR فصل)^2', 'page'),
             ('("هذا كتاب" OR فصل)^2', 'title'),
             ('title:(("هذا كتاب" OR فصل)^2 OR باب) AND شرح', 'title'),
         ]
@@ -279,6 +296,8 @@ def main() -> None:
             'title:("طريق العلم"^2 OR "شرح متن"^3)',
             '"طريق" OR "علم"',
             '"طريق\\^العلم"^2',
+            'باب "طريق"^.5',
+            'باب "طريق"^2e3',
         ]
         for query in boosted_phrase_span_cases:
             actual = extract_boosted_phrase_spans_c_backend(conn, query)
@@ -367,6 +386,8 @@ def main() -> None:
             'كتاب^2 AND علم',
             'كتاب AND علم^3.5',
             'كتاب^2 OR علم^3',
+            'كتاب^1.234567890123456 AND علم',
+            'كتاب^' + '0' * 64 + ' AND علم',
             'كتاب OR علم',
             'كتاب OR',
             '"كتاب" AND علم',
@@ -375,9 +396,24 @@ def main() -> None:
             'كتاب -علم AND باب',
         ]
         for query in simple_boolean_cases:
-            expected = parse_simple_boolean_python(query, simple_query_re)
-            actual = parse_simple_boolean_with_udf(conn, query, simple_query_re)
-            if actual != expected:
+            py_failed = False
+            c_failed = False
+            try:
+                expected = parse_simple_boolean_python(query, simple_query_re)
+            except SearchCompileError:
+                py_failed = True
+                expected = None
+            try:
+                actual = parse_simple_boolean_with_udf(conn, query, simple_query_re)
+            except SearchCompileError:
+                c_failed = True
+                actual = None
+            if py_failed != c_failed:
+                raise SystemExit(
+                    'error: parse_simple_boolean error parity mismatch '
+                    f'query={query!r} python_failed={py_failed} c_failed={c_failed}'
+                )
+            if (not py_failed) and actual != expected:
                 raise SystemExit(
                     'error: parse_simple_boolean UDF mismatch '
                     f'query={query!r} expected={expected!r} actual={actual!r}'
@@ -410,6 +446,9 @@ def main() -> None:
             '"طريق العلم"~3^2.5',
             'title:"طريق العلم"',
             'page:"طريق العلم"~2^1.5',
+            '"طريق العلم"^.5',
+            '"طريق العلم"^2e3',
+            '"طريق العلم"^' + '0' * 64,
             'title:"طريق العلم" OR باب',
             'باب',
         ]

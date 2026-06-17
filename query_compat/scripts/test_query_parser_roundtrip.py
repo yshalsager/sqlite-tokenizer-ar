@@ -16,6 +16,7 @@ EXTRA_ROUNDTRIP_QUERIES = [
     'title:"باب \\"خاص\\""',
     'title:"باب \\"خاص\\""^2',
     'title:("باب \\"خاص\\"" OR المصور)^2',
+    'title:(المنصور OR المصور)^1.234567890123456',
     '("طريق \\"العلم\\""~2 OR نافع) AND +title:("باب \\"خاص\\"" OR المصور)',
     'م\\*ور OR منسور\\~1',
     'title\\:المصور OR المصور',
@@ -145,7 +146,17 @@ def main() -> None:
                 f'index={index} query={query!r} expected={expected!r} actual={actual!r}'
             )
 
-    extra_invalid_cases = []
+    extra_invalid_cases = [
+        ('local_slop_overflow', 'split_query', '"abc"~2147483648', 'invalid phrase slop'),
+        ('local_dangling_phrase_slop', 'split_query', '"abc"~ AND def', 'invalid phrase slop'),
+        ('local_invalid_phrase_slop_suffix', 'split_query', '"abc"~2.5 AND def', 'invalid phrase slop'),
+        ('local_invalid_phrase_boost_prefix', 'split_query', '"abc"^2e3 AND def', 'invalid phrase boost'),
+        ('local_invalid_phrase_boost_shape', 'split_query', '"abc"^.5 AND def', 'invalid phrase boost'),
+        ('local_invalid_phrase_boost_too_long', 'split_query', '"abc"^' + '0' * 64 + ' AND def', 'invalid phrase boost'),
+        ('local_invalid_unscoped_group_boost_prefix', 'split_query', '(abc)^2e3 AND def', 'invalid group boost'),
+        ('local_invalid_field_group_boost_prefix', 'split_query', 'title:(abc)^2e3 AND def', 'invalid group boost'),
+        ('local_dangling_field_group_boost', 'split_query', 'title:(abc)^ AND def', 'invalid group boost'),
+    ]
     for line in invalid_fixture_path.read_text(encoding='utf-8').splitlines():
         if not line.strip():
             continue
