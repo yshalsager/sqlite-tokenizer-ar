@@ -219,6 +219,27 @@ def main() -> None:
         )
         assert_value(
             conn,
+            "SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال الإمام ﵀ وكان لسان أهل الجنة عربي', '["عرب"]', 'all', 8),
+            'قال الإمام ﵀ وكان لسان أهل الجنة \ue000عربي\ue001',
+            'highlight analyzed stemmed source token',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_highlight_analyzed_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
+            ('قال الإمام ﵀', '["رحم","له"]', 'all', 8),
+            'قال الإمام \ue000﵀\ue001',
+            'highlight analyzed honorific source glyph',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_find_all_analyzed_match_spans_json(?, ?, ?, ?)",
+            ('قال عربي', '["عرب"]', 'all', 8),
+            '[{"start":4,"end":8}]',
+            'find analyzed stemmed source token spans',
+        )
+        assert_value(
+            conn,
             "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
             ('قال الإمام ﷿', '["وجل"]', 'any', 8),
             'قال الإمام \ue000﷿\ue001',

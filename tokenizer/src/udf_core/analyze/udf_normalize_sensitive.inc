@@ -419,6 +419,8 @@ typedef struct SnippetSpan {
   int end;
 } SnippetSpan;
 
+static int select_highlight_spans(SnippetSpan *spans, int spanCount, SnippetSpan **outSpans, int *outCount);
+
 static int compare_ranked_spans(const void *left, const void *right) {
   const SnippetRankedSpan *a = (const SnippetRankedSpan *)left;
   const SnippetRankedSpan *b = (const SnippetRankedSpan *)right;
@@ -1040,6 +1042,377 @@ static int append_snippet_span(SnippetSpan **spans, int *count, int *cap, int st
   return SQLITE_OK;
 }
 
+typedef struct SourceAnalyzedToken {
+  char *term;
+  int nTerm;
+  int start;
+  int end;
+  int order;
+} SourceAnalyzedToken;
+
+typedef struct SourceAnalyzedTokenBuffer {
+  SourceAnalyzedToken *items;
+  int count;
+  int cap;
+  int order;
+  const char *text;
+  int nText;
+  int rc;
+} SourceAnalyzedTokenBuffer;
+
+static int byte_offset_to_codepoint_index(const char *text, int nText, int byteOffset) {
+  if (byteOffset <= 0 || text == NULL || nText <= 0) {
+    return 0;
+  }
+  if (byteOffset > nText) {
+    byteOffset = nText;
+  }
+  int bytePos = 0;
+  int cpIndex = 0;
+  while (bytePos < byteOffset) {
+    int consumed = 0;
+    uint32_t cp = 0;
+    if (!utf8_decode(text + bytePos, nText - bytePos, &consumed, &cp) || consumed <= 0) {
+      consumed = 1;
+    }
+    if (bytePos + consumed > byteOffset) {
+      break;
+    }
+    bytePos += consumed;
+    cpIndex++;
+  }
+  return cpIndex;
+}
+
+static void source_analyzed_token_buffer_free(SourceAnalyzedTokenBuffer *buffer) {
+  if (buffer == NULL) {
+    return;
+  }
+  for (int i = 0; i < buffer->count; i++) {
+    sqlite3_free(buffer->items[i].term);
+  }
+  sqlite3_free(buffer->items);
+  memset(buffer, 0, sizeof(*buffer));
+}
+
+static int source_analyzed_token_buffer_append(
+    SourceAnalyzedTokenBuffer *buffer,
+    const char *term,
+    int nTerm,
+    int start,
+    int end) {
+  if (buffer->rc != SQLITE_OK) {
+    return buffer->rc;
+  }
+  if (nTerm <= 0 || end <= start) {
+    return SQLITE_OK;
+  }
+  if (buffer->count >= buffer->cap) {
+    int required = 0;
+    if (ar_checked_int_sum(buffer->count, 1, &required) != SQLITE_OK) {
+      buffer->rc = SQLITE_TOOBIG;
+      return SQLITE_TOOBIG;
+    }
+    int nextCap = 0;
+    int rc = ar_grow_capacity(buffer->cap, required, 16, &nextCap);
+    if (rc != SQLITE_OK) {
+      buffer->rc = rc;
+      return rc;
+    }
+    SourceAnalyzedToken *next = ar_realloc_array(buffer->items, nextCap, sizeof(SourceAnalyzedToken));
+    if (next == NULL) {
+      buffer->rc = SQLITE_NOMEM;
+      return SQLITE_NOMEM;
+    }
+    buffer->items = next;
+    buffer->cap = nextCap;
+  }
+  char *copy = sqlite3_malloc64((sqlite3_uint64)nTerm + 1);
+  if (copy == NULL) {
+    buffer->rc = SQLITE_NOMEM;
+    return SQLITE_NOMEM;
+  }
+  memcpy(copy, term, (size_t)nTerm);
+  copy[nTerm] = '\0';
+  buffer->items[buffer->count].term = copy;
+  buffer->items[buffer->count].nTerm = nTerm;
+  buffer->items[buffer->count].start = start;
+  buffer->items[buffer->count].end = end;
+  buffer->items[buffer->count].order = buffer->order++;
+  buffer->count++;
+  return SQLITE_OK;
+}
+
+static int source_analyzed_token_collect_callback(void *pCtx, int tflags, const char *pToken, int nToken, int iStart, int iEnd) {
+  (void)tflags;
+  SourceAnalyzedTokenBuffer *buffer = (SourceAnalyzedTokenBuffer *)pCtx;
+  if (nToken == EMPTY_TERM_SENTINEL_LEN && memcmp(pToken, EMPTY_TERM_SENTINEL, (size_t)EMPTY_TERM_SENTINEL_LEN) == 0) {
+    return SQLITE_OK;
+  }
+  int start = byte_offset_to_codepoint_index(buffer->text, buffer->nText, iStart);
+  int end = byte_offset_to_codepoint_index(buffer->text, buffer->nText, iEnd);
+  return source_analyzed_token_buffer_append(buffer, pToken, nToken, start, end);
+}
+
+static int compare_source_analyzed_tokens(const void *left, const void *right) {
+  const SourceAnalyzedToken *a = (const SourceAnalyzedToken *)left;
+  const SourceAnalyzedToken *b = (const SourceAnalyzedToken *)right;
+  if (a->start != b->start) {
+    return (a->start < b->start) ? -1 : 1;
+  }
+  if (a->order != b->order) {
+    return (a->order < b->order) ? -1 : 1;
+  }
+  return 0;
+}
+
+static int collect_source_analyzed_tokens(const char *text, int nText, SourceAnalyzedTokenBuffer *tokens) {
+  memset(tokens, 0, sizeof(*tokens));
+  tokens->text = text;
+  tokens->nText = nText;
+  ArabicTokenizer tokenizer;
+  memset(&tokenizer, 0, sizeof(tokenizer));
+  int rc = arabic_tokenize((Fts5Tokenizer *)&tokenizer, tokens, FTS5_TOKENIZE_QUERY, text, nText, source_analyzed_token_collect_callback);
+  if (rc == SQLITE_OK) {
+    rc = tokens->rc;
+  }
+  if (rc != SQLITE_OK) {
+    source_analyzed_token_buffer_free(tokens);
+    return rc;
+  }
+
+  int bytePos = 0;
+  int cpPos = 0;
+  while (bytePos < nText) {
+    int consumed = 0;
+    uint32_t cp = 0;
+    if (!utf8_decode(text + bytePos, nText - bytePos, &consumed, &cp) || consumed <= 0) {
+      consumed = 1;
+    }
+    const HonorificExpansion *expansion = find_honorific_expansion(text + bytePos, nText - bytePos);
+    if (expansion != NULL) {
+      AnalyzeTermsBuffer expandedTerms;
+      memset(&expandedTerms, 0, sizeof(expandedTerms));
+      rc = arabic_tokenize(
+          (Fts5Tokenizer *)&tokenizer,
+          &expandedTerms,
+          FTS5_TOKENIZE_QUERY,
+          expansion->phrase,
+          expansion->phraseLen,
+          analyze_collect_token);
+      if (rc == SQLITE_OK) {
+        rc = expandedTerms.rc;
+      }
+      for (int i = 0; rc == SQLITE_OK && i < expandedTerms.count; i++) {
+        rc = source_analyzed_token_buffer_append(tokens, expandedTerms.terms[i], expandedTerms.termLens[i], cpPos, cpPos + 1);
+      }
+      analyze_terms_buffer_free(&expandedTerms);
+      if (rc != SQLITE_OK) {
+        source_analyzed_token_buffer_free(tokens);
+        return rc;
+      }
+      bytePos += expansion->glyphLen;
+      cpPos++;
+      continue;
+    }
+    bytePos += consumed;
+    cpPos++;
+  }
+
+  if (tokens->count > 1) {
+    qsort(tokens->items, (size_t)tokens->count, sizeof(SourceAnalyzedToken), compare_source_analyzed_tokens);
+  }
+  return SQLITE_OK;
+}
+
+static int source_token_matches_term(const SourceAnalyzedToken *token, const char *term, int nTerm) {
+  return token->nTerm == nTerm && memcmp(token->term, term, (size_t)nTerm) == 0;
+}
+
+static int collect_analyzed_match_spans(
+    const char *text,
+    int nText,
+    const JsonStringArray *terms,
+    const char *mode,
+    int limit,
+    SnippetSpan **spans,
+    int *spanCount,
+    int *spanCap,
+    int *requirementsMet) {
+  *requirementsMet = 1;
+  if (text == NULL || terms == NULL || mode == NULL || nText <= 0 || limit <= 0) {
+    *requirementsMet = 0;
+    return SQLITE_OK;
+  }
+
+  SourceAnalyzedTokenBuffer tokens;
+  int rc = collect_source_analyzed_tokens(text, nText, &tokens);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
+  if (strcmp(mode, "phrase") == 0) {
+    int firstTerm = -1;
+    int termCount = 0;
+    for (int i = 0; i < terms->count; i++) {
+      if (terms->lens[i] > 0) {
+        if (firstTerm < 0) {
+          firstTerm = i;
+        }
+        termCount++;
+      }
+    }
+    if (termCount == 0 || termCount > tokens.count) {
+      *requirementsMet = 0;
+    } else {
+      int emitted = 0;
+      for (int i = 0; emitted < limit && i <= tokens.count - termCount; i++) {
+        int termIndex = firstTerm;
+        int matched = 1;
+        for (int j = 0; j < termCount; j++) {
+          while (termIndex < terms->count && terms->lens[termIndex] <= 0) {
+            termIndex++;
+          }
+          if (termIndex >= terms->count || !source_token_matches_term(&tokens.items[i + j], terms->items[termIndex], terms->lens[termIndex])) {
+            matched = 0;
+            break;
+          }
+          termIndex++;
+        }
+        if (matched) {
+          rc = append_snippet_span(spans, spanCount, spanCap, tokens.items[i].start, tokens.items[i + termCount - 1].end);
+          if (rc != SQLITE_OK) {
+            break;
+          }
+          emitted++;
+        }
+      }
+      *requirementsMet = emitted > 0;
+    }
+  } else if (strcmp(mode, "any") == 0 || strcmp(mode, "all") == 0) {
+    int requireAll = strcmp(mode, "all") == 0;
+    int validTerms = 0;
+    for (int termIdx = 0; rc == SQLITE_OK && termIdx < terms->count; termIdx++) {
+      if (terms->lens[termIdx] <= 0) {
+        continue;
+      }
+      validTerms++;
+      int matchedThisTerm = 0;
+      for (int tokenIdx = 0; matchedThisTerm < limit && tokenIdx < tokens.count; tokenIdx++) {
+        if (source_token_matches_term(&tokens.items[tokenIdx], terms->items[termIdx], terms->lens[termIdx])) {
+          rc = append_snippet_span(spans, spanCount, spanCap, tokens.items[tokenIdx].start, tokens.items[tokenIdx].end);
+          if (rc != SQLITE_OK) {
+            break;
+          }
+          matchedThisTerm++;
+        }
+      }
+      if (requireAll && matchedThisTerm == 0) {
+        *requirementsMet = 0;
+        break;
+      }
+    }
+    if (validTerms == 0 || (!requireAll && *spanCount == 0)) {
+      *requirementsMet = 0;
+    }
+  } else {
+    source_analyzed_token_buffer_free(&tokens);
+    return SQLITE_MISUSE;
+  }
+
+  source_analyzed_token_buffer_free(&tokens);
+  return rc;
+}
+
+static int render_spans_json(sqlite3_context *context, const SnippetSpan *spans, int spanCount) {
+  sqlite3_str *json = sqlite3_str_new(sqlite3_context_db_handle(context));
+  if (json == NULL) {
+    return SQLITE_NOMEM;
+  }
+  sqlite3_str_appendall(json, "[");
+  for (int i = 0; i < spanCount; i++) {
+    if (i > 0) {
+      sqlite3_str_appendall(json, ",");
+    }
+    sqlite3_str_appendf(json, "{\"start\":%d,\"end\":%d}", spans[i].start, spans[i].end);
+  }
+  sqlite3_str_appendall(json, "]");
+  char *jsonOut = sqlite3_str_finish(json);
+  if (jsonOut == NULL) {
+    return SQLITE_NOMEM;
+  }
+  sqlite3_result_text(context, jsonOut, -1, sqlite3_free);
+  return SQLITE_OK;
+}
+
+static void udf_sqlite_tokenizer_ar_find_all_analyzed_match_spans_json(sqlite3_context *context, int argc, sqlite3_value **argv) {
+  if (argc < 3 || argc > 4) {
+    sqlite3_result_error(context, "sqlite_tokenizer_ar_find_all_analyzed_match_spans_json expects 3..4 arguments", -1);
+    return;
+  }
+  if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL || sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+    sqlite3_result_text(context, "[]", -1, SQLITE_STATIC);
+    return;
+  }
+  const char *text = (const char *)sqlite3_value_text(argv[0]);
+  int nText = sqlite3_value_bytes(argv[0]);
+  const char *termsJson = (const char *)sqlite3_value_text(argv[1]);
+  int nTermsJson = sqlite3_value_bytes(argv[1]);
+  const char *mode = (const char *)sqlite3_value_text(argv[2]);
+  int limit = (argc >= 4) ? sqlite3_value_int(argv[3]) : 8;
+  if (text == NULL || termsJson == NULL || mode == NULL || nText <= 0 || nTermsJson <= 0 || limit <= 0) {
+    sqlite3_result_text(context, "[]", -1, SQLITE_STATIC);
+    return;
+  }
+
+  JsonStringArray terms;
+  int rc = parse_json_string_array(termsJson, nTermsJson, &terms);
+  if (rc == SQLITE_NOMEM) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error(context, "invalid terms_json: expected JSON string array", -1);
+    return;
+  }
+
+  SnippetSpan *candidates = NULL;
+  int candidateCount = 0;
+  int candidateCap = 0;
+  int requirementsMet = 0;
+  rc = collect_analyzed_match_spans(text, nText, &terms, mode, limit, &candidates, &candidateCount, &candidateCap, &requirementsMet);
+  json_string_array_free(&terms);
+  if (rc == SQLITE_MISUSE) {
+    sqlite3_free(candidates);
+    sqlite3_result_error(context, "mode must be one of: any, all, phrase", -1);
+    return;
+  }
+  if (rc != SQLITE_OK) {
+    sqlite3_free(candidates);
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  if (!requirementsMet || candidateCount == 0) {
+    sqlite3_free(candidates);
+    sqlite3_result_text(context, "[]", -1, SQLITE_STATIC);
+    return;
+  }
+
+  SnippetSpan *picked = NULL;
+  int pickedCount = 0;
+  rc = select_highlight_spans(candidates, candidateCount, &picked, &pickedCount);
+  sqlite3_free(candidates);
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  rc = render_spans_json(context, picked, pickedCount);
+  sqlite3_free(picked);
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error_nomem(context);
+  }
+}
+
 static int honorific_expansion_matches_term(
     const HonorificExpansion *expansion,
     const NormalizeOptions *options,
@@ -1464,6 +1837,89 @@ static void udf_sqlite_tokenizer_ar_highlight_normalized_matches(sqlite3_context
   }
 
   json_string_array_free(&terms);
+  if (!requirementsMet || candidateCount == 0) {
+    sqlite3_free(candidates);
+    sqlite3_result_null(context);
+    return;
+  }
+
+  SnippetSpan *picked = NULL;
+  int pickedCount = 0;
+  rc = select_highlight_spans(candidates, candidateCount, &picked, &pickedCount);
+  sqlite3_free(candidates);
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  if (pickedCount == 0) {
+    sqlite3_free(picked);
+    sqlite3_result_null(context);
+    return;
+  }
+
+  char *out = NULL;
+  int nOut = 0;
+  rc = render_text_with_marker_spans(text, nText, picked, pickedCount, startMarker, nStartMarker, endMarker, nEndMarker, &out, &nOut);
+  sqlite3_free(picked);
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  sqlite3_result_text(context, out, nOut, sqlite3_free);
+}
+
+static void udf_sqlite_tokenizer_ar_highlight_analyzed_matches(sqlite3_context *context, int argc, sqlite3_value **argv) {
+  if (argc != 6) {
+    sqlite3_result_error(context, "sqlite_tokenizer_ar_highlight_analyzed_matches expects 6 arguments", -1);
+    return;
+  }
+  if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL || sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+    sqlite3_result_null(context);
+    return;
+  }
+
+  const char *text = (const char *)sqlite3_value_text(argv[0]);
+  int nText = sqlite3_value_bytes(argv[0]);
+  const char *termsJson = (const char *)sqlite3_value_text(argv[1]);
+  int nTermsJson = sqlite3_value_bytes(argv[1]);
+  const char *mode = (const char *)sqlite3_value_text(argv[2]);
+  const char *startMarker = sqlite3_value_type(argv[3]) == SQLITE_NULL ? "" : (const char *)sqlite3_value_text(argv[3]);
+  int nStartMarker = sqlite3_value_type(argv[3]) == SQLITE_NULL ? 0 : sqlite3_value_bytes(argv[3]);
+  const char *endMarker = sqlite3_value_type(argv[4]) == SQLITE_NULL ? "" : (const char *)sqlite3_value_text(argv[4]);
+  int nEndMarker = sqlite3_value_type(argv[4]) == SQLITE_NULL ? 0 : sqlite3_value_bytes(argv[4]);
+  int limit = sqlite3_value_int(argv[5]);
+  if (text == NULL || termsJson == NULL || mode == NULL || nText <= 0 || nTermsJson <= 0 || limit <= 0) {
+    sqlite3_result_null(context);
+    return;
+  }
+
+  JsonStringArray terms;
+  int rc = parse_json_string_array(termsJson, nTermsJson, &terms);
+  if (rc == SQLITE_NOMEM) {
+    sqlite3_result_error_nomem(context);
+    return;
+  }
+  if (rc != SQLITE_OK) {
+    sqlite3_result_error(context, "invalid terms_json: expected JSON string array", -1);
+    return;
+  }
+
+  SnippetSpan *candidates = NULL;
+  int candidateCount = 0;
+  int candidateCap = 0;
+  int requirementsMet = 0;
+  rc = collect_analyzed_match_spans(text, nText, &terms, mode, limit, &candidates, &candidateCount, &candidateCap, &requirementsMet);
+  json_string_array_free(&terms);
+  if (rc == SQLITE_MISUSE) {
+    sqlite3_free(candidates);
+    sqlite3_result_error(context, "mode must be one of: any, all, phrase", -1);
+    return;
+  }
+  if (rc != SQLITE_OK) {
+    sqlite3_free(candidates);
+    sqlite3_result_error_nomem(context);
+    return;
+  }
   if (!requirementsMet || candidateCount == 0) {
     sqlite3_free(candidates);
     sqlite3_result_null(context);
