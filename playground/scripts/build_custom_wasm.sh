@@ -59,8 +59,8 @@ fi
 echo "[4/6] building official sqlite3 WASM bundle with custom extra init"
 echo "[4a/6] ensuring sqlite amalgamation is generated (sqlite3.c/sqlite3.h)"
 (cd "$SQLITE_SRC_DIR" && make -j2 sqlite3.c)
-(cd "$WASM_DIR" && make -j2)
-(cd "$WASM_DIR" && make jswasm/sqlite3-node.mjs)
+(cd "$WASM_DIR" && make -j2 npm)
+(cd "$WASM_DIR" && make emcc_opt=-Oz jswasm/sqlite3-worker1.js)
 
 OUTPUT_DIR="$PLAYGROUND_DIR/sqlite-wasm-custom"
 mkdir -p "$OUTPUT_DIR"
