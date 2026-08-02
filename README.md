@@ -2,7 +2,7 @@
 
 Native SQLite FTS5 tokenizer and compatibility helpers for Arabic search.
 
-The core extension exposes an FTS5 tokenizer named `sqlite_tokenizer_ar`. It is designed to match the Lucene Arabic analysis pipeline for tokenization, Arabic normalization, stopwords, digit folding, and light stemming, while running inside SQLite.
+The core extension exposes an FTS5 tokenizer named `sqlite_tokenizer_ar`. It is designed to match the [Apache Lucene](https://lucene.apache.org/) Arabic analysis pipeline for tokenization, Arabic normalization, stopwords, digit folding, and light stemming, while running inside SQLite.
 
 Reference assets are pinned to Lucene `9.9.0` for reproducibility. The ArabicAnalyzer pipeline was source-diffed against Lucene `10.4.0` on 2026-06-07 with no behavior changes found.
 
