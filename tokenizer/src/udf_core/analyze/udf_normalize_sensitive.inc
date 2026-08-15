@@ -1620,6 +1620,137 @@ static int join_json_terms_with_space(const JsonStringArray *terms, char **out, 
   return SQLITE_OK;
 }
 
+static int normalized_term_exists(
+    const char *text,
+    int nText,
+    const char *normalizedText,
+    int nNormalizedText,
+    const NormalizeOptions *options,
+    const char *term,
+    int nTerm,
+    int *matched) {
+  *matched = 0;
+  char *normalizedTerm = NULL;
+  int nNormalizedTerm = 0;
+  int rc = normalize_text_with_options(term, nTerm, options, &normalizedTerm, &nNormalizedTerm);
+  if (rc != SQLITE_OK || nNormalizedTerm <= 0) {
+    sqlite3_free(normalizedTerm);
+    return rc;
+  }
+  *matched = nNormalizedText >= nNormalizedTerm && strstr(normalizedText, normalizedTerm) != NULL;
+  for (int bytePos = 0; !*matched && bytePos < nText;) {
+    int consumed = 0;
+    uint32_t cp = 0;
+    if (!utf8_decode(text + bytePos, nText - bytePos, &consumed, &cp)) {
+      bytePos++;
+      continue;
+    }
+    const HonorificExpansion *expansion = find_honorific_expansion(text + bytePos, nText - bytePos);
+    if (expansion != NULL) {
+      char *normalizedExpansion = NULL;
+      int nNormalizedExpansion = 0;
+      rc = normalize_text_with_options(
+          expansion->phrase, expansion->phraseLen, options, &normalizedExpansion, &nNormalizedExpansion);
+      if (rc != SQLITE_OK) {
+        sqlite3_free(normalizedExpansion);
+        break;
+      }
+      *matched = strstr(normalizedExpansion, normalizedTerm) != NULL;
+      sqlite3_free(normalizedExpansion);
+    }
+    bytePos += consumed;
+  }
+  sqlite3_free(normalizedTerm);
+  return rc;
+}
+
+static void udf_sqlite_tokenizer_ar_matches_normalized(sqlite3_context *context, int argc, sqlite3_value **argv) {
+  if (argc != 3 || sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL ||
+      sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+    sqlite3_result_null(context);
+    return;
+  }
+  const char *text = (const char *)sqlite3_value_text(argv[0]);
+  int nText = sqlite3_value_bytes(argv[0]);
+  const char *termsJson = (const char *)sqlite3_value_text(argv[1]);
+  int nTermsJson = sqlite3_value_bytes(argv[1]);
+  const char *mode = (const char *)sqlite3_value_text(argv[2]);
+  int modeKind = mode == NULL ? 0 : strcmp(mode, "any") == 0 ? 1 : strcmp(mode, "all") == 0 ? 2 : strcmp(mode, "phrase") == 0 ? 3 : 0;
+  if (text == NULL || termsJson == NULL || nTermsJson <= 0 || modeKind == 0) {
+    sqlite3_result_null(context);
+    return;
+  }
+
+  JsonStringArray terms;
+  int rc = parse_json_string_array(termsJson, nTermsJson, &terms);
+  if (rc != SQLITE_OK) {
+    if (rc == SQLITE_NOMEM) {
+      sqlite3_result_error_nomem(context);
+    } else {
+      sqlite3_result_null(context);
+    }
+    return;
+  }
+  NormalizeOptions options = {
+      .ignoreDiacritics = 1,
+      .ignoreHamzaForms = 1,
+      .ignoreLetterForms = 1,
+      .ignoreDigitForms = 1,
+      .lowercase = 1,
+      .keepWildcards = 0,
+  };
+  char *normalizedText = NULL;
+  int nNormalizedText = 0;
+  rc = normalize_text_with_options(text, nText, &options, &normalizedText, &nNormalizedText);
+  if (rc != SQLITE_OK) {
+    json_string_array_free(&terms);
+    if (rc == SQLITE_TOOBIG) {
+      sqlite3_result_error_toobig(context);
+    } else {
+      sqlite3_result_error_nomem(context);
+    }
+    return;
+  }
+
+  int validTerms = 0;
+  int result = modeKind == 2;
+  if (modeKind == 3) {
+    char *phrase = NULL;
+    int nPhrase = 0;
+    rc = join_json_terms_with_space(&terms, &phrase, &nPhrase);
+    if (rc == SQLITE_OK && nPhrase > 0) {
+      validTerms = 1;
+      rc = normalized_term_exists(text, nText, normalizedText, nNormalizedText, &options, phrase, nPhrase, &result);
+    }
+    sqlite3_free(phrase);
+  } else {
+    for (int i = 0; rc == SQLITE_OK && i < terms.count; i++) {
+      if (terms.lens[i] <= 0) {
+        continue;
+      }
+      validTerms++;
+      int matched = 0;
+      rc = normalized_term_exists(
+          text, nText, normalizedText, nNormalizedText, &options, terms.items[i], terms.lens[i], &matched);
+      if ((modeKind == 1 && matched) || (modeKind == 2 && !matched)) {
+        result = matched;
+        break;
+      }
+    }
+  }
+  sqlite3_free(normalizedText);
+  json_string_array_free(&terms);
+  if (rc == SQLITE_TOOBIG) {
+    sqlite3_result_error_toobig(context);
+  } else if (rc != SQLITE_OK) {
+    sqlite3_result_error_nomem(context);
+  } else if (validTerms == 0) {
+    sqlite3_result_null(context);
+  } else {
+    sqlite3_result_int(context, result);
+  }
+}
+
 static int render_text_with_marker_spans(
     const char *text,
     int nText,

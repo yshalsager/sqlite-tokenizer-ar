@@ -35,6 +35,7 @@ After loading the extension, SQLite gets:
 - UDF: `sqlite_tokenizer_ar_parse_scoped_token_json(token)`
 - UDF: `sqlite_tokenizer_ar_parse_boosted_token_clause_json(token, runtime_field)`
 - UDF: `sqlite_tokenizer_ar_find_all_normalized_match_spans_json(text, term, limit=8)`
+- UDF: `sqlite_tokenizer_ar_matches_normalized(text, terms_json, mode)`
 - UDF: `sqlite_tokenizer_ar_highlight_normalized_matches(text, terms_json, mode, start_marker, end_marker, limit)`
 - UDF: `sqlite_tokenizer_ar_find_all_analyzed_match_spans_json(text, terms_json, mode, limit=8)`
 - UDF: `sqlite_tokenizer_ar_highlight_analyzed_matches(text, terms_json, mode, start_marker, end_marker, limit, raw_terms_json=NULL)`
@@ -325,6 +326,7 @@ Because expansion happens before FTS5 token callbacks, token offsets for expande
 ### 1) `sqlite_tokenizer_ar_analyze_json(text)`
 
 Returns analyzer output tokens as a JSON array.
+These final tokens are for inspection and analyzer-aware highlighting; do not feed them back into FTS5 `MATCH`, which would analyze them a second time. Build `MATCH` input from quoted original query terms instead.
 
 ```sql
 SELECT sqlite_tokenizer_ar_analyze_json('الذين ملكت أيمانكم');
@@ -417,6 +419,8 @@ sqlite_tokenizer_ar_highlight_normalized_matches(
 - `mode='phrase'` treats one item as the raw phrase, or joins multiple non-empty items with one ASCII space.
 - Overlaps are sorted by start ascending, then length descending; the first selected non-overlapping span wins.
 - Matching uses relaxed normalization for diacritics, hamza forms, letter forms, digit forms, and lowercase, while output preserves original text.
+
+Use `sqlite_tokenizer_ar_matches_normalized(text, terms_json, mode)` for the same normalized `any`, `all`, or `phrase` checks without spans or rendered output. It returns `1` or `0` for valid non-empty inputs and `NULL` for invalid input or no non-empty terms.
 
 ```sql
 SELECT sqlite_tokenizer_ar_highlight_normalized_matches(

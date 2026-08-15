@@ -238,6 +238,52 @@ def main() -> None:
             0,
             'strict sensitivity negative',
         )
+        normalized_predicate_cases = (
+            ('اللغة العربيّة مفيدة', '["العربية","الفرنسية"]', 'any', 1),
+            ('اللغة العربيّة مفيدة', '["الفرنسية","العربية"]', 'any', 1),
+            ('اللغة العربيّة مفيدة', '["الفرنسية"]', 'any', 0),
+            ('من يريد العلم فليطلبه', '["من","يريد"]', 'all', 1),
+            ('من يريد العلم فليطلبه', '["من","غائب"]', 'all', 0),
+            ('اللغة العربيّة مفيدة', '["العربية"]', 'phrase', 1),
+            ('ثم من يُريد العلم', '["من","يريد"]', 'phrase', 1),
+            ('من طلب العلم يريد الخير', '["من","يريد"]', 'phrase', 0),
+            ('إيمان فتى مدرسة', '["ايمان","فتي","مدرسه"]', 'all', 1),
+            ('طبعة ١٢٣ Arabic', '["123","ARABIC"]', 'all', 1),
+            ('قال الإمام ﵀', '["رحمه","الله"]', 'phrase', 1),
+            ('العربية', '["العربية","العربية"]', 'all', 1),
+            ('العربية', '["","العربية"]', 'all', 1),
+            ('', '["العربية"]', 'any', 0),
+            ('العربية', '[""]', 'any', None),
+            ('العربية', '[]', 'phrase', None),
+            ('العربية', '[] trailing', 'any', None),
+            ('العربية', '[1]', 'any', None),
+            ('العربية', '["العربية"]', 'invalid', None),
+        )
+        for index, (text, terms_json, mode, expected) in enumerate(normalized_predicate_cases):
+            assert_value(
+                conn,
+                'SELECT sqlite_tokenizer_ar_matches_normalized(?, ?, ?)',
+                (text, terms_json, mode),
+                expected,
+                f'normalized predicate case {index}',
+            )
+        for params in ((None, '["عرب"]', 'any'), ('عربي', None, 'any'), ('عربي', '["عرب"]', None)):
+            assert_value(conn, 'SELECT sqlite_tokenizer_ar_matches_normalized(?, ?, ?)', params, None, 'normalized predicate NULL')
+        for index, params in enumerate(
+            (
+                ('اللغة العربيّة مفيدة', '["العربية","الفرنسية"]', 'any'),
+                ('من يريد العلم', '["من","يريد"]', 'all'),
+                ('ثم من يُريد العلم', '["من","يريد"]', 'phrase'),
+            )
+        ):
+            assert_value(
+                conn,
+                """SELECT sqlite_tokenizer_ar_matches_normalized(?, ?, ?) =
+                          (sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, '<mark>', '</mark>', 8) IS NOT NULL)""",
+                params + params,
+                1,
+                f'normalized predicate/highlighter parity {index}',
+            )
         assert_value(
             conn,
             "SELECT sqlite_tokenizer_ar_highlight_normalized_matches(?, ?, ?, char(0xE000), char(0xE001), ?)",
