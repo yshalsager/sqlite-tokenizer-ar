@@ -163,6 +163,55 @@ def main() -> None:
         )
         assert_value(
             conn,
+            "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
+            (
+                '"برجوعه فيها" AND *عرب',
+                'page',
+                '{"suffix_max_expansions":12,"tokenizer_args":["disable_stopwords"]}',
+            ),
+            '{"match_template":{"page":"(\\"برجوع في\\") AND ($page_1)"},"verify":[{"mode":"phrase","terms":["برجوعه","فيها"]}],"expand":[{"id":"page_1","field":"page","kind":"suffix","pattern":"*عرب","max_expansions":12}],"unsupported":[]}',
+            'schema-independent query plan',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
+            ('"سنة ١٤٤٥ سنة ﵀"', 'page', '{"tokenizer_args":["honorific_expansions"]}'),
+            '{"match_template":{"page":"(\\"سن 1445 سن رحم له\\")"},"verify":[{"mode":"phrase","terms":["سنة","١٤٤٥","سنة","﵀"]}],"expand":[],"unsupported":[]}',
+            'query plan preserves raw phrase terms',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
+            ('"برجوعه فيها" OR كتاب', 'page', '{}'),
+            '{"match_template":{},"verify":[],"expand":[],"unsupported":["verification_boolean"]}',
+            'query plan rejects ambiguous phrase verification',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
+            ('+كتاب "باب العلم"', 'page', '{}'),
+            '{"match_template":{},"verify":[],"expand":[],"unsupported":["verification_boolean"]}',
+            'query plan rejects optional phrase verification',
+        )
+        assert_value(
+            conn,
+            "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
+            ('"طريق العلم"~2', 'page', '{}'),
+            '{"match_template":{},"verify":[],"expand":[],"unsupported":["verification_slop"]}',
+            'query plan rejects lossy phrase slop verification',
+        )
+        for query, options, label in (
+            ('*عرب*', '{"allow_suffix_search":false}', 'mixed wildcard suffix policy'),
+            ('ع?ب*', '{"allow_prefix_search":false}', 'mixed wildcard prefix policy'),
+        ):
+            try:
+                conn.execute("SELECT sqlite_tokenizer_ar_plan_query_json(?, 'page', ?)", (query, options)).fetchone()
+            except sqlite3.OperationalError:
+                pass
+            else:
+                raise SystemExit(f'error: query plan accepted disabled {label}')
+        assert_value(
+            conn,
             "SELECT sqlite_tokenizer_ar_normalize(?, 1, 1, 1, 1, 1, 0)",
             ('قُرْآن ١٢٣ مدرسة',),
             'قران 123 مدرسه',

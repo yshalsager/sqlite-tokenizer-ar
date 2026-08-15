@@ -17,5 +17,6 @@ static const UdfDef kQueryUdfs[] = {
     {"sqlite_tokenizer_ar_extract_snippet_query_terms_json", 1, AR_UDF_DETERMINISTIC, udf_sqlite_tokenizer_ar_extract_snippet_query_terms_json},
     {"sqlite_tokenizer_ar_extract_snippet_query_phrases_json", 1, AR_UDF_DETERMINISTIC, udf_sqlite_tokenizer_ar_extract_snippet_query_phrases_json},
     {"sqlite_tokenizer_ar_build_field_snippet_json", 2, AR_UDF_DETERMINISTIC, udf_sqlite_tokenizer_ar_build_field_snippet_json},
+    {"sqlite_tokenizer_ar_plan_query_json", 3, AR_UDF_DETERMINISTIC, udf_sqlite_tokenizer_ar_plan_query_json},
     {"sqlite_tokenizer_ar_execute_query_json", 4, AR_UDF_DB_READING, udf_sqlite_tokenizer_ar_execute_query_json},
 };

@@ -59,5 +59,7 @@ static int arabic_tokenize(
     const char *pText,
     int nText,
     int (*xToken)(void *pCtx, int tflags, const char *pToken, int nToken, int iStart, int iEnd));
+static int arabic_create(void *ctx, const char **argv, int argc, Fts5Tokenizer **ppOut);
+static void arabic_delete(Fts5Tokenizer *pTokenizer);
 
 #endif

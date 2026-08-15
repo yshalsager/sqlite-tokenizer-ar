@@ -1558,19 +1558,18 @@ static void execute_query_free_phrase_terms(ExecutePhraseTerm *terms, int termCo
   sqlite3_free(terms);
 }
 
-static int execute_query_collect_phrase_terms(const char *text, int nText, ExecutePhraseTerm **termsOut, int *termCountOut) {
+static int execute_query_collect_phrase_terms_with_tokenizer(
+    ArabicTokenizer *tokenizer, const char *text, int nText, ExecutePhraseTerm **termsOut, int *termCountOut) {
   *termsOut = NULL;
   *termCountOut = 0;
   if (text == NULL || nText <= 0) {
     return SQLITE_OK;
   }
 
-  ArabicTokenizer tokenizer;
-  memset(&tokenizer, 0, sizeof(tokenizer));
   AnalyzeTermsBuffer analyzed;
   memset(&analyzed, 0, sizeof(analyzed));
   int rc = arabic_tokenize(
-      (Fts5Tokenizer *)&tokenizer,
+      (Fts5Tokenizer *)tokenizer,
       &analyzed,
       FTS5_TOKENIZE_QUERY | ARABIC_TOKENIZE_EMIT_POSITIONS,
       text,
@@ -1619,6 +1618,12 @@ static int execute_query_collect_phrase_terms(const char *text, int nText, Execu
   *termsOut = terms;
   *termCountOut = analyzedCount;
   return SQLITE_OK;
+}
+
+static int execute_query_collect_phrase_terms(const char *text, int nText, ExecutePhraseTerm **termsOut, int *termCountOut) {
+  ArabicTokenizer tokenizer;
+  memset(&tokenizer, 0, sizeof(tokenizer));
+  return execute_query_collect_phrase_terms_with_tokenizer(&tokenizer, text, nText, termsOut, termCountOut);
 }
 
 static int execute_query_build_phrase_compiled(
@@ -2791,75 +2796,102 @@ static int execute_query_unwrap_outer_parens(char **compiledInOut, int *nCompile
   return SQLITE_OK;
 }
 
-static int execute_query_compile_parsed_clauses_for_field(
-    const ParsedSimpleAstClause *clauses,
-    int clauseCount,
-    int runtimeFieldKind,
-    char **compiledOut,
-    int *nCompiledOut);
+typedef struct ExecutePhraseClauseView {
+  const char *text;
+  int nText;
+  int slop;
+  int scopeFieldKind;
+} ExecutePhraseClauseView;
 
-static int execute_query_compile_phrase_clause_for_field(
-    const ParsedSimpleAstClause *clause,
-    int runtimeFieldKind,
-    char **compiledOut,
-    int *nCompiledOut) {
+static int execute_query_decode_phrase_clause(const ParsedSimpleAstClause *clause, ExecutePhraseClauseView *view) {
+  memset(view, 0, sizeof(*view));
   int hasScope = token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase") ||
                  token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase_slop");
   int hasSlop = token_equals_ascii_ci(clause->kind, clause->nKind, "phrase_slop") ||
                 token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase_slop");
-
-  const char *phrasePayload = clause->value;
-  int nPhrasePayload = clause->nValue;
+  view->text = clause->value;
+  view->nText = clause->nValue;
   if (hasScope) {
     const char *scope = NULL;
     int nScope = 0;
-    const char *scopedRaw = NULL;
-    int nScopedRaw = 0;
-    parse_boosted_token_clause_scope(clause->value, clause->nValue, &scope, &nScope, &scopedRaw, &nScopedRaw);
-    if (scope == NULL || scopedRaw == NULL || nScopedRaw <= 0) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+    parse_boosted_token_clause_scope(clause->value, clause->nValue, &scope, &nScope, &view->text, &view->nText);
+    view->scopeFieldKind = scope == NULL ? 0 : execute_query_field_kind(scope, nScope);
+    if (view->scopeFieldKind == 0 || view->text == NULL || view->nText <= 0) {
+      return 0;
     }
-    int scopeFieldKind = execute_query_field_kind(scope, nScope);
-    if (scopeFieldKind == 0) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
-    if (scopeFieldKind != runtimeFieldKind) {
-      int rcNoHit = execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
-      return (rcNoHit == SQLITE_OK) ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
-    }
-    phrasePayload = scopedRaw;
-    nPhrasePayload = nScopedRaw;
   }
-
-  int phraseSlop = 0;
-  const char *phraseText = phrasePayload;
-  int nPhraseText = nPhrasePayload;
   if (hasSlop) {
-    int splitAt = find_unescaped_char_span(phrasePayload, 0, nPhrasePayload, '\t');
-    if (splitAt < 0 || splitAt + 1 >= nPhrasePayload) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+    int splitAt = find_unescaped_char_span(view->text, 0, view->nText, '\t');
+    if (splitAt < 0 || splitAt + 1 >= view->nText ||
+        !parse_nonnegative_int_span(view->text, splitAt, INT_MAX, &view->slop)) {
+      return 0;
     }
-    int nSlop = splitAt;
-    if (!parse_nonnegative_int_span(phrasePayload, nSlop, INT_MAX, &phraseSlop)) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+    view->text += splitAt + 1;
+    view->nText -= splitAt + 1;
+  }
+  return 1;
+}
+
+typedef int (*ExecuteQueryCompileLeaf)(
+    void *ctx, const ParsedSimpleAstClause *clause, int runtimeFieldKind, char **compiledOut, int *nCompiledOut);
+
+static int execute_query_compile_ast_expression(
+    const char *query,
+    int nQuery,
+    int runtimeFieldKind,
+    ExecuteQueryCompileLeaf compileLeaf,
+    void *compileContext,
+    int unsupportedRc,
+    int depth,
+    char **compiledOut,
+    int *nCompiledOut);
+
+static int execute_query_compile_leaf_for_field(
+    void *ctx, const ParsedSimpleAstClause *clause, int runtimeFieldKind, char **compiledOut, int *nCompiledOut) {
+  (void)ctx;
+  if (token_equals_ascii_ci(clause->kind, clause->nKind, "token")) {
+    ExecuteParsedTokenClause tokenClause;
+    memset(&tokenClause, 0, sizeof(tokenClause));
+    int parseRc = execute_query_parse_token_clause(clause, &tokenClause);
+    if (parseRc != 0) {
+      execute_query_free_parsed_token_clause(&tokenClause);
+      return parseRc == 3 ? EXECUTE_QUERY_COMPILE_NOMEM : EXECUTE_QUERY_COMPILE_UNSUPPORTED;
     }
-    phraseText = phrasePayload + splitAt + 1;
-    nPhraseText = nPhrasePayload - (splitAt + 1);
+    ExecuteCompiledTokenState tokenState;
+    memset(&tokenState, 0, sizeof(tokenState));
+    execute_query_resolve_compiled_token_state_for_field(&tokenClause, runtimeFieldKind, &tokenState);
+    int rc = execute_query_build_unwrapped_single_term_expression(tokenState.token, tokenState.nToken, compiledOut, nCompiledOut);
+    execute_query_free_parsed_token_clause(&tokenClause);
+    return rc == SQLITE_OK ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
+  }
+  if (!token_equals_ascii_ci(clause->kind, clause->nKind, "phrase") &&
+      !token_equals_ascii_ci(clause->kind, clause->nKind, "phrase_slop") &&
+      !token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase") &&
+      !token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase_slop")) {
+    return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+  }
+  ExecutePhraseClauseView view;
+  if (!execute_query_decode_phrase_clause(clause, &view)) {
+    return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+  }
+  if (view.scopeFieldKind != 0 && view.scopeFieldKind != runtimeFieldKind) {
+    int rc = execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
+    return rc == SQLITE_OK ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
   }
 
   ExecutePhraseTerm *phraseTerms = NULL;
   int phraseTermCount = 0;
-  int rcPhrase = execute_query_collect_phrase_terms(phraseText, nPhraseText, &phraseTerms, &phraseTermCount);
-  if (rcPhrase != SQLITE_OK) {
+  int rc = execute_query_collect_phrase_terms(view.text, view.nText, &phraseTerms, &phraseTermCount);
+  if (rc != SQLITE_OK) {
     return EXECUTE_QUERY_COMPILE_NOMEM;
   }
-  int rcCompile = execute_query_build_phrase_compiled(phraseTerms, phraseTermCount, phraseSlop, compiledOut, nCompiledOut);
+  rc = execute_query_build_phrase_compiled(phraseTerms, phraseTermCount, view.slop, compiledOut, nCompiledOut);
   execute_query_free_phrase_terms(phraseTerms, phraseTermCount);
-  if (rcCompile != SQLITE_OK) {
+  if (rc != SQLITE_OK) {
     return EXECUTE_QUERY_COMPILE_NOMEM;
   }
-  int rcUnwrap = execute_query_unwrap_outer_parens(compiledOut, nCompiledOut);
-  if (rcUnwrap != SQLITE_OK) {
+  rc = execute_query_unwrap_outer_parens(compiledOut, nCompiledOut);
+  if (rc != SQLITE_OK) {
     sqlite3_free(*compiledOut);
     *compiledOut = NULL;
     *nCompiledOut = 0;
@@ -2868,54 +2900,22 @@ static int execute_query_compile_phrase_clause_for_field(
   return EXECUTE_QUERY_COMPILE_OK;
 }
 
-static int execute_query_compile_clause_for_field(
+static int execute_query_compile_ast_clause(
     const ParsedSimpleAstClause *clause,
     int runtimeFieldKind,
+    ExecuteQueryCompileLeaf compileLeaf,
+    void *compileContext,
+    int unsupportedRc,
+    int depth,
     char **compiledOut,
     int *nCompiledOut) {
-  if (token_equals_ascii_ci(clause->kind, clause->nKind, "token")) {
-    ExecuteParsedTokenClause tokenClause;
-    memset(&tokenClause, 0, sizeof(tokenClause));
-    int parseRc = execute_query_parse_token_clause(clause, &tokenClause);
-    if (parseRc == 3) {
-      execute_query_free_parsed_token_clause(&tokenClause);
-      return EXECUTE_QUERY_COMPILE_NOMEM;
-    }
-    if (parseRc != 0) {
-      execute_query_free_parsed_token_clause(&tokenClause);
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
-    ExecuteCompiledTokenState tokenState;
-    memset(&tokenState, 0, sizeof(tokenState));
-    execute_query_resolve_compiled_token_state_for_field(&tokenClause, runtimeFieldKind, &tokenState);
-    int rcCompile = execute_query_build_unwrapped_single_term_expression(tokenState.token, tokenState.nToken, compiledOut, nCompiledOut);
-    execute_query_free_parsed_token_clause(&tokenClause);
-    return (rcCompile == SQLITE_OK) ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
+  if (depth > 16) {
+    return unsupportedRc;
   }
-
-  if (token_equals_ascii_ci(clause->kind, clause->nKind, "phrase") || token_equals_ascii_ci(clause->kind, clause->nKind, "phrase_slop") ||
-      token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase") ||
-      token_equals_ascii_ci(clause->kind, clause->nKind, "field_phrase_slop")) {
-    return execute_query_compile_phrase_clause_for_field(clause, runtimeFieldKind, compiledOut, nCompiledOut);
-  }
-
   if (token_equals_ascii_ci(clause->kind, clause->nKind, "group")) {
-    ParsedSimpleAstClause innerA;
-    ParsedSimpleAstClause innerB;
-    int innerCount = 0;
-    if (!parse_simple_query_ast_clauses(clause->value, clause->nValue, &innerA, &innerB, &innerCount)) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
-    ParsedSimpleAstClause innerClauses[2];
-    if (innerCount > 0) {
-      innerClauses[0] = innerA;
-    }
-    if (innerCount > 1) {
-      innerClauses[1] = innerB;
-    }
-    return execute_query_compile_parsed_clauses_for_field(innerClauses, innerCount, runtimeFieldKind, compiledOut, nCompiledOut);
+    return execute_query_compile_ast_expression(
+        clause->value, clause->nValue, runtimeFieldKind, compileLeaf, compileContext, unsupportedRc, depth + 1, compiledOut, nCompiledOut);
   }
-
   if (token_equals_ascii_ci(clause->kind, clause->nKind, "field_group") ||
       token_equals_ascii_ci(clause->kind, clause->nKind, "field_group_boost")) {
     const char *scope = NULL;
@@ -2923,59 +2923,52 @@ static int execute_query_compile_clause_for_field(
     const char *innerQuery = NULL;
     int nInnerQuery = 0;
     if (!execute_query_parse_field_group_clause_value(clause, &scope, &nScope, &innerQuery, &nInnerQuery)) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+      return unsupportedRc;
     }
     int scopeFieldKind = execute_query_field_kind(scope, nScope);
     if (scopeFieldKind == 0) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+      return unsupportedRc;
     }
     if (scopeFieldKind != runtimeFieldKind) {
-      int rcNoHit = execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
-      return (rcNoHit == SQLITE_OK) ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
+      return execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
     }
-    ParsedSimpleAstClause innerA;
-    ParsedSimpleAstClause innerB;
-    int innerCount = 0;
-    if (!parse_simple_query_ast_clauses(innerQuery, nInnerQuery, &innerA, &innerB, &innerCount)) {
-      return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
-    ParsedSimpleAstClause innerClauses[2];
-    if (innerCount > 0) {
-      innerClauses[0] = innerA;
-    }
-    if (innerCount > 1) {
-      innerClauses[1] = innerB;
-    }
-    return execute_query_compile_parsed_clauses_for_field(innerClauses, innerCount, runtimeFieldKind, compiledOut, nCompiledOut);
+    return execute_query_compile_ast_expression(
+        innerQuery, nInnerQuery, runtimeFieldKind, compileLeaf, compileContext, unsupportedRc, depth + 1, compiledOut, nCompiledOut);
   }
-
-  return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
+  return compileLeaf(compileContext, clause, runtimeFieldKind, compiledOut, nCompiledOut);
 }
 
-static int execute_query_compile_parsed_clauses_for_field(
-    const ParsedSimpleAstClause *clauses,
-    int clauseCount,
+static int execute_query_compile_ast_expression(
+    const char *query,
+    int nQuery,
     int runtimeFieldKind,
+    ExecuteQueryCompileLeaf compileLeaf,
+    void *compileContext,
+    int unsupportedRc,
+    int depth,
     char **compiledOut,
     int *nCompiledOut) {
-  if (clauseCount <= 0) {
-    int rcNoHit = execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
-    return (rcNoHit == SQLITE_OK) ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
+  if (depth > 16) {
+    return unsupportedRc;
   }
-
+  ParsedSimpleAstClause clauses[2];
+  int clauseCount = 0;
+  if (!parse_simple_query_ast_clauses(query, nQuery, &clauses[0], &clauses[1], &clauseCount) || clauseCount <= 0) {
+    return unsupportedRc;
+  }
   char *compiledNodes[2] = {NULL, NULL};
   int nCompiledNodes[2] = {0, 0};
   int occurKinds[2] = {0, 0}; /* 1=must, 2=should, 3=must_not */
   int mustCount = 0;
   int shouldCount = 0;
   int mustNotCount = 0;
-
   for (int i = 0; i < clauseCount; i++) {
-    int nodeRc = execute_query_compile_clause_for_field(&clauses[i], runtimeFieldKind, &compiledNodes[i], &nCompiledNodes[i]);
-    if (nodeRc != EXECUTE_QUERY_COMPILE_OK) {
+    int rc = execute_query_compile_ast_clause(
+        &clauses[i], runtimeFieldKind, compileLeaf, compileContext, unsupportedRc, depth + 1, &compiledNodes[i], &nCompiledNodes[i]);
+    if (rc != SQLITE_OK) {
       sqlite3_free(compiledNodes[0]);
       sqlite3_free(compiledNodes[1]);
-      return nodeRc;
+      return rc;
     }
     int occurKind = 2;
     if (token_equals_ascii_ci(clauses[i].occur, clauses[i].nOccur, "MUST")) {
@@ -3018,15 +3011,15 @@ static int execute_query_compile_parsed_clauses_for_field(
       appended++;
     }
   }
-  sqlite3_free(compiledNodes[0]);
-  sqlite3_free(compiledNodes[1]);
-
   if (positiveCount <= 0 || nPositive <= 0) {
+    sqlite3_free(compiledNodes[0]);
+    sqlite3_free(compiledNodes[1]);
     sqlite3_free(positive);
-    int rcNoHit = execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
-    return (rcNoHit == SQLITE_OK) ? EXECUTE_QUERY_COMPILE_OK : EXECUTE_QUERY_COMPILE_NOMEM;
+    return execute_query_build_unwrapped_single_term_expression("__nohit__", 9, compiledOut, nCompiledOut);
   }
   if (mustNotCount <= 0) {
+    sqlite3_free(compiledNodes[0]);
+    sqlite3_free(compiledNodes[1]);
     positive[nPositive] = '\0';
     *compiledOut = positive;
     *nCompiledOut = nPositive;
@@ -3048,27 +3041,19 @@ static int execute_query_compile_parsed_clauses_for_field(
     if (occurKinds[i] != 3) {
       continue;
     }
-    char *mustNotExpr = NULL;
-    int nMustNotExpr = 0;
-    int nodeRc = execute_query_compile_clause_for_field(&clauses[i], runtimeFieldKind, &mustNotExpr, &nMustNotExpr);
-    if (nodeRc != EXECUTE_QUERY_COMPILE_OK) {
-      sqlite3_free(positive);
-      sqlite3_free(compiled);
-      sqlite3_free(mustNotExpr);
-      return (nodeRc == EXECUTE_QUERY_COMPILE_NOMEM) ? EXECUTE_QUERY_COMPILE_NOMEM : EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-    }
     if (appendedMustNot > 0) {
       rc = json_builder_append_bytes(&compiled, &nCompiled, &compiledCap, " OR ", 4);
     }
     if (rc == SQLITE_OK) {
-      rc = execute_query_append_wrapped_expression(&compiled, &nCompiled, &compiledCap, mustNotExpr, nMustNotExpr);
+      rc = execute_query_append_wrapped_expression(&compiled, &nCompiled, &compiledCap, compiledNodes[i], nCompiledNodes[i]);
     }
-    sqlite3_free(mustNotExpr);
     appendedMustNot++;
   }
   if (rc == SQLITE_OK) {
     rc = json_builder_append_bytes(&compiled, &nCompiled, &compiledCap, ")", 1);
   }
+  sqlite3_free(compiledNodes[0]);
+  sqlite3_free(compiledNodes[1]);
   sqlite3_free(positive);
   if (rc != SQLITE_OK) {
     sqlite3_free(compiled);
@@ -3086,20 +3071,16 @@ static int execute_query_compile_query_expression_for_field(
     int runtimeFieldKind,
     char **compiledOut,
     int *nCompiledOut) {
-  ParsedSimpleAstClause clauseA;
-  ParsedSimpleAstClause clauseB;
-  int clauseCount = 0;
-  if (!parse_simple_query_ast_clauses(query, nQuery, &clauseA, &clauseB, &clauseCount)) {
-    return EXECUTE_QUERY_COMPILE_UNSUPPORTED;
-  }
-  ParsedSimpleAstClause clauses[2];
-  if (clauseCount > 0) {
-    clauses[0] = clauseA;
-  }
-  if (clauseCount > 1) {
-    clauses[1] = clauseB;
-  }
-  return execute_query_compile_parsed_clauses_for_field(clauses, clauseCount, runtimeFieldKind, compiledOut, nCompiledOut);
+  return execute_query_compile_ast_expression(
+      query,
+      nQuery,
+      runtimeFieldKind,
+      execute_query_compile_leaf_for_field,
+      NULL,
+      EXECUTE_QUERY_COMPILE_UNSUPPORTED,
+      0,
+      compiledOut,
+      nCompiledOut);
 }
 
 static void execute_query_free_boosted_tokens(ExecuteQueryBoostedToken *tokens, int tokenCount) {
