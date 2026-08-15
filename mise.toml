@@ -98,6 +98,14 @@ cd tokenizer
 python scripts/fuzz_test.py
 '''
 
+[tasks.'tokenizer:benchmark-normalized']
+description = 'Compare normalized predicate performance with the span workaround'
+depends = ['tokenizer:build']
+run = '''
+cd tokenizer
+python scripts/benchmark_normalized_predicate.py
+'''
+
 [tasks.'tokenizer:random-parity']
 description = 'Run deterministic Lucene-vs-tokenizer random analyzer parity'
 depends = ['tokenizer:build']

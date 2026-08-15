@@ -620,16 +620,14 @@ static int snippet_query_find_all_spans(
   uint32_t *textCodepoints = NULL;
   int *textOrigIndexMap = NULL;
   int textCount = 0;
-  int rc = normalize_to_codepoints_with_map(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
+  int rc = normalize_to_codepoints(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
   if (rc != SQLITE_OK) {
     return rc;
   }
 
   uint32_t *termCodepoints = NULL;
-  int *termMapUnused = NULL;
   int termCount = 0;
-  rc = normalize_to_codepoints_with_map(term, nTerm, &options, &termCodepoints, &termMapUnused, &termCount);
-  sqlite3_free(termMapUnused);
+  rc = normalize_to_codepoints(term, nTerm, &options, &termCodepoints, NULL, &termCount);
   if (rc != SQLITE_OK) {
     sqlite3_free(textCodepoints);
     sqlite3_free(textOrigIndexMap);

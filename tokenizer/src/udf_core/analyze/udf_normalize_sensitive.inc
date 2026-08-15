@@ -82,7 +82,7 @@ static void udf_sqlite_tokenizer_ar_has_sensitive_forms(sqlite3_context *context
   sqlite3_result_int(context, 0);
 }
 
-static int normalize_to_codepoints_with_map(
+static int normalize_to_codepoints(
     const char *input,
     int nInput,
     const NormalizeOptions *options,
@@ -94,8 +94,8 @@ static int normalize_to_codepoints_with_map(
     return SQLITE_TOOBIG;
   }
   uint32_t *codepoints = ar_malloc_array(cap, sizeof(uint32_t));
-  int *origIndexMap = ar_malloc_array(cap, sizeof(int));
-  if (codepoints == NULL || origIndexMap == NULL) {
+  int *origIndexMap = outOrigIndexMap == NULL ? NULL : ar_malloc_array(cap, sizeof(int));
+  if (codepoints == NULL || (outOrigIndexMap != NULL && origIndexMap == NULL)) {
     sqlite3_free(codepoints);
     sqlite3_free(origIndexMap);
     return SQLITE_NOMEM;
@@ -128,23 +128,29 @@ static int normalize_to_codepoints_with_map(
           return SQLITE_NOMEM;
         }
         codepoints = nextCodepoints;
-        int *nextMap = ar_realloc_array(origIndexMap, nextCap, sizeof(int));
-        if (nextMap == NULL) {
-          sqlite3_free(codepoints);
-          sqlite3_free(origIndexMap);
-          return SQLITE_NOMEM;
+        if (origIndexMap != NULL) {
+          int *nextMap = ar_realloc_array(origIndexMap, nextCap, sizeof(int));
+          if (nextMap == NULL) {
+            sqlite3_free(codepoints);
+            sqlite3_free(origIndexMap);
+            return SQLITE_NOMEM;
+          }
+          origIndexMap = nextMap;
         }
-        origIndexMap = nextMap;
         cap = nextCap;
       }
       codepoints[count] = cp;
-      origIndexMap[count] = origIndex;
+      if (origIndexMap != NULL) {
+        origIndexMap[count] = origIndex;
+      }
       count++;
     }
     origIndex++;
   }
   *outCodepoints = codepoints;
-  *outOrigIndexMap = origIndexMap;
+  if (outOrigIndexMap != NULL) {
+    *outOrigIndexMap = origIndexMap;
+  }
   *outCount = count;
   return SQLITE_OK;
 }
@@ -206,17 +212,15 @@ static void udf_sqlite_tokenizer_ar_find_all_normalized_match_spans_json(sqlite3
   uint32_t *textCodepoints = NULL;
   int *textOrigIndexMap = NULL;
   int textCount = 0;
-  int rc = normalize_to_codepoints_with_map(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
+  int rc = normalize_to_codepoints(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
   if (rc != SQLITE_OK) {
     sqlite3_result_error_nomem(context);
     return;
   }
 
   uint32_t *termCodepoints = NULL;
-  int *termMapUnused = NULL;
   int termCount = 0;
-  rc = normalize_to_codepoints_with_map(term, nTerm, &options, &termCodepoints, &termMapUnused, &termCount);
-  sqlite3_free(termMapUnused);
+  rc = normalize_to_codepoints(term, nTerm, &options, &termCodepoints, NULL, &termCount);
   if (rc != SQLITE_OK) {
     sqlite3_free(textCodepoints);
     sqlite3_free(textOrigIndexMap);
@@ -1422,11 +1426,9 @@ static int honorific_expansion_matches_term(
     return 0;
   }
   uint32_t *phraseCodepoints = NULL;
-  int *phraseMapUnused = NULL;
   int phraseCount = 0;
-  int rc = normalize_to_codepoints_with_map(
-      expansion->phrase, expansion->phraseLen, options, &phraseCodepoints, &phraseMapUnused, &phraseCount);
-  sqlite3_free(phraseMapUnused);
+  int rc = normalize_to_codepoints(
+      expansion->phrase, expansion->phraseLen, options, &phraseCodepoints, NULL, &phraseCount);
   if (rc != SQLITE_OK) {
     sqlite3_free(phraseCodepoints);
     return -1;
@@ -1462,16 +1464,14 @@ static int collect_normalized_match_spans(
   uint32_t *textCodepoints = NULL;
   int *textOrigIndexMap = NULL;
   int textCount = 0;
-  int rc = normalize_to_codepoints_with_map(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
+  int rc = normalize_to_codepoints(text, nText, &options, &textCodepoints, &textOrigIndexMap, &textCount);
   if (rc != SQLITE_OK) {
     return rc;
   }
 
   uint32_t *termCodepoints = NULL;
-  int *termMapUnused = NULL;
   int termCount = 0;
-  rc = normalize_to_codepoints_with_map(term, nTerm, &options, &termCodepoints, &termMapUnused, &termCount);
-  sqlite3_free(termMapUnused);
+  rc = normalize_to_codepoints(term, nTerm, &options, &termCodepoints, NULL, &termCount);
   if (rc != SQLITE_OK) {
     sqlite3_free(textCodepoints);
     sqlite3_free(textOrigIndexMap);
@@ -1623,42 +1623,37 @@ static int join_json_terms_with_space(const JsonStringArray *terms, char **out, 
 static int normalized_term_exists(
     const char *text,
     int nText,
-    const char *normalizedText,
-    int nNormalizedText,
+    const uint32_t *normalizedText,
+    int normalizedTextCount,
     const NormalizeOptions *options,
     const char *term,
     int nTerm,
     int *matched) {
   *matched = 0;
-  char *normalizedTerm = NULL;
-  int nNormalizedTerm = 0;
-  int rc = normalize_text_with_options(term, nTerm, options, &normalizedTerm, &nNormalizedTerm);
-  if (rc != SQLITE_OK || nNormalizedTerm <= 0) {
+  uint32_t *normalizedTerm = NULL;
+  int normalizedTermCount = 0;
+  int rc = normalize_to_codepoints(term, nTerm, options, &normalizedTerm, NULL, &normalizedTermCount);
+  if (rc != SQLITE_OK || normalizedTermCount <= 0) {
     sqlite3_free(normalizedTerm);
     return rc;
   }
-  *matched = nNormalizedText >= nNormalizedTerm && strstr(normalizedText, normalizedTerm) != NULL;
-  for (int bytePos = 0; !*matched && bytePos < nText;) {
-    int consumed = 0;
-    uint32_t cp = 0;
-    if (!utf8_decode(text + bytePos, nText - bytePos, &consumed, &cp)) {
-      bytePos++;
-      continue;
+  *matched = find_codepoint_subsequence(normalizedText, normalizedTextCount, normalizedTerm, normalizedTermCount, 0) >= 0;
+  /* Supported honorific glyphs are U+Fxxx, so only inspect 0xEF UTF-8 prefixes. */
+  for (int bytePos = 0; !*matched && bytePos < nText; bytePos++) {
+    const char *prefix = memchr(text + bytePos, 0xEF, (size_t)(nText - bytePos));
+    if (prefix == NULL) {
+      break;
     }
+    bytePos = (int)(prefix - text);
     const HonorificExpansion *expansion = find_honorific_expansion(text + bytePos, nText - bytePos);
     if (expansion != NULL) {
-      char *normalizedExpansion = NULL;
-      int nNormalizedExpansion = 0;
-      rc = normalize_text_with_options(
-          expansion->phrase, expansion->phraseLen, options, &normalizedExpansion, &nNormalizedExpansion);
-      if (rc != SQLITE_OK) {
-        sqlite3_free(normalizedExpansion);
+      int expansionMatched = honorific_expansion_matches_term(expansion, options, normalizedTerm, normalizedTermCount);
+      if (expansionMatched < 0) {
+        rc = SQLITE_NOMEM;
         break;
       }
-      *matched = strstr(normalizedExpansion, normalizedTerm) != NULL;
-      sqlite3_free(normalizedExpansion);
+      *matched = expansionMatched;
     }
-    bytePos += consumed;
   }
   sqlite3_free(normalizedTerm);
   return rc;
@@ -1699,9 +1694,9 @@ static void udf_sqlite_tokenizer_ar_matches_normalized(sqlite3_context *context,
       .lowercase = 1,
       .keepWildcards = 0,
   };
-  char *normalizedText = NULL;
-  int nNormalizedText = 0;
-  rc = normalize_text_with_options(text, nText, &options, &normalizedText, &nNormalizedText);
+  uint32_t *normalizedText = NULL;
+  int normalizedTextCount = 0;
+  rc = normalize_to_codepoints(text, nText, &options, &normalizedText, NULL, &normalizedTextCount);
   if (rc != SQLITE_OK) {
     json_string_array_free(&terms);
     if (rc == SQLITE_TOOBIG) {
@@ -1720,7 +1715,7 @@ static void udf_sqlite_tokenizer_ar_matches_normalized(sqlite3_context *context,
     rc = join_json_terms_with_space(&terms, &phrase, &nPhrase);
     if (rc == SQLITE_OK && nPhrase > 0) {
       validTerms = 1;
-      rc = normalized_term_exists(text, nText, normalizedText, nNormalizedText, &options, phrase, nPhrase, &result);
+      rc = normalized_term_exists(text, nText, normalizedText, normalizedTextCount, &options, phrase, nPhrase, &result);
     }
     sqlite3_free(phrase);
   } else {
@@ -1731,7 +1726,14 @@ static void udf_sqlite_tokenizer_ar_matches_normalized(sqlite3_context *context,
       validTerms++;
       int matched = 0;
       rc = normalized_term_exists(
-          text, nText, normalizedText, nNormalizedText, &options, terms.items[i], terms.lens[i], &matched);
+          text,
+          nText,
+          normalizedText,
+          normalizedTextCount,
+          &options,
+          terms.items[i],
+          terms.lens[i],
+          &matched);
       if ((modeKind == 1 && matched) || (modeKind == 2 && !matched)) {
         result = matched;
         break;
