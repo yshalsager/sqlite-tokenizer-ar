@@ -169,14 +169,14 @@ def main() -> None:
                 'page',
                 '{"suffix_max_expansions":12,"tokenizer_args":["disable_stopwords"]}',
             ),
-            '{"match_template":{"page":"(\\"برجوع في\\") AND ($page_1)"},"verify":[{"mode":"phrase","terms":["برجوعه","فيها"]}],"expand":[{"id":"page_1","field":"page","kind":"suffix","pattern":"*عرب","max_expansions":12}],"unsupported":[]}',
+            '{"match_template":{"page":"(\\"برجوع في\\") AND ($page_1)"},"verify":[{"mode":"phrase","raw_terms":["برجوعه","فيها"]}],"expand":[{"id":"page_1","field":"page","kind":"suffix","pattern":"*عرب","max_expansions":12}],"unsupported":[]}',
             'schema-independent query plan',
         )
         assert_value(
             conn,
             "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
             ('"سنة ١٤٤٥ سنة ﵀"', 'page', '{"tokenizer_args":["honorific_expansions"]}'),
-            '{"match_template":{"page":"(\\"سن 1445 سن رحم له\\")"},"verify":[{"mode":"phrase","terms":["سنة","١٤٤٥","سنة","﵀"]}],"expand":[],"unsupported":[]}',
+            '{"match_template":{"page":"(\\"سن 1445 سن رحم له\\")"},"verify":[{"mode":"phrase","raw_terms":["سنة","١٤٤٥","سنة","﵀"]}],"expand":[],"unsupported":[]}',
             'query plan preserves raw phrase terms',
         )
         assert_value(

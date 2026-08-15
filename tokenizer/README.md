@@ -636,7 +636,7 @@ Current behavior:
 - `sqlite_tokenizer_ar_parse_query_ast_json` supports:
   - fixture-covered parser shapes in `tests/fixtures/queries/inputs.smoke|complex|snippets.jsonl`, including grouped/nested clauses used by the current query-compat gates.
 - `sqlite_tokenizer_ar_iter_query_ast_leaves_json` returns flattened AST leaves with composed occur semantics (`MUST/SHOULD/MUST_NOT`) for ranking/planner helpers.
-- `sqlite_tokenizer_ar_plan_query_json` is schema-independent. It returns per-field `MATCH` templates, raw phrase verification terms, and unresolved corpus-dependent suffix/wildcard/fuzzy expansion descriptors. Expansion placeholders such as `$page_1` must be replaced with safely quoted FTS terms before execution. `options_json` accepts the existing search-option names plus `tokenizer_args`, an array containing the exact tokenizer arguments used to create the target FTS table. Callers must not execute plans with a non-empty `unsupported` array; boost ranking, strict-form verification, phrase slop, and phrase verification inside optional or ambiguous boolean branches are reported there until their metadata contracts are defined.
+- `sqlite_tokenizer_ar_plan_query_json` is schema-independent. It returns per-field `MATCH` templates, raw phrase verification terms under `verify[].raw_terms`, and unresolved corpus-dependent suffix/wildcard/fuzzy expansion descriptors. Expansion placeholders such as `$page_1` must be replaced with safely quoted FTS terms before execution. `options_json` accepts the existing search-option names plus `tokenizer_args`, an array containing the exact tokenizer arguments used to create the target FTS table. Callers must not execute plans with a non-empty `unsupported` array; boost ranking, strict-form verification, phrase slop, and phrase verification inside optional or ambiguous boolean branches are reported there until their metadata contracts are defined.
 - `sqlite_tokenizer_ar_execute_query_json` runs the fixture-covered C planner/ranker/snippet backend. It requires the canonical query-compat schema: `page_fts`, `page_doc_map`, `page_content_store`, `title_fts`, `title_doc_map`, and `title_content_store`. It also creates `qcv_page_vocab`, `qcv_page_vocab_inst`, `qcv_title_vocab`, and `qcv_title_vocab_inst`. It is intentionally registered without `SQLITE_DETERMINISTIC` and with `SQLITE_DIRECTONLY` when supported by SQLite.
 
 ```sql
@@ -646,7 +646,7 @@ SELECT sqlite_tokenizer_ar_plan_query_json(
   '{"suffix_max_expansions":12,"tokenizer_args":["disable_stopwords"]}'
 );
 -- {"match_template":{"page":"(\"برجوع في\") AND ($page_1)"},
---  "verify":[{"mode":"phrase","terms":["برجوعه","فيها"]}],
+--  "verify":[{"mode":"phrase","raw_terms":["برجوعه","فيها"]}],
 --  "expand":[{"id":"page_1","field":"page","kind":"suffix","pattern":"*عرب","max_expansions":12}],
 --  "unsupported":[]}
 ```

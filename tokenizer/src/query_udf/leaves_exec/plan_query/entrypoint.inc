@@ -87,7 +87,7 @@ static int plan_query_append_verify_phrases(
       rc = json_builder_append_char(json, nJson, jsonCap, ',');
     }
     if (rc == SQLITE_OK) {
-      rc = json_builder_append_bytes(json, nJson, jsonCap, "{\"mode\":\"phrase\",\"terms\":[", 26);
+      rc = json_builder_append_bytes(json, nJson, jsonCap, "{\"mode\":\"phrase\",\"raw_terms\":[", 30);
     }
     if (rc == SQLITE_OK) {
       rc = json_builder_append_bytes(json, nJson, jsonCap, termsJson, nTermsJson);
