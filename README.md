@@ -38,6 +38,28 @@ INSERT INTO docs(body) VALUES('قُرْآن كريم'),('هذه كتابها م�
 SELECT rowid, body FROM docs WHERE docs MATCH 'قران';
 ```
 
+## Mise Installation
+
+Release archives provide the native extension for Linux x64/arm64, macOS arm64, and Windows x64:
+
+```toml
+[tools."github:yshalsager/sqlite-tokenizer-ar"]
+version = "0.1.13"
+asset_pattern = 'sqlite-tokenizer-ar-{{ os() }}-{{ arch() }}.tar.gz'
+```
+
+Resolve the installed extension without compiling it locally:
+
+```bash
+export CATALOG_TOKENIZER_EXTENSION="$(mise where github:yshalsager/sqlite-tokenizer-ar)/sqlite_tokenizer_ar.so"
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:CATALOG_TOKENIZER_EXTENSION = "$(mise where github:yshalsager/sqlite-tokenizer-ar)\sqlite_tokenizer_ar.dll"
+```
+
 ## Tokenizer Features
 
 - Standard-style UTF-8 token segmentation for Arabic, Latin, and digits.

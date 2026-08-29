@@ -52,7 +52,16 @@ static void sqlite_tokenizer_ar_set_error(char **pzErrMsg, const char *message) 
   }
 }
 
-int sqlite3_sqlitetokenizerar_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi) {
+#ifdef _WIN32
+#define SQLITE_TOKENIZER_AR_EXPORT __declspec(dllexport)
+#else
+#define SQLITE_TOKENIZER_AR_EXPORT
+#endif
+
+SQLITE_TOKENIZER_AR_EXPORT int sqlite3_sqlitetokenizerar_init(
+    sqlite3 *db,
+    char **pzErrMsg,
+    const sqlite3_api_routines *pApi) {
   SQLITE_EXTENSION_INIT2(pApi);
 
   fts5_api *fts = fts5_api_from_db(db);
@@ -85,9 +94,14 @@ int sqlite3_sqlitetokenizerar_init(sqlite3 *db, char **pzErrMsg, const sqlite3_a
   return rc;
 }
 
-int sqlite3_extension_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi) {
+SQLITE_TOKENIZER_AR_EXPORT int sqlite3_extension_init(
+    sqlite3 *db,
+    char **pzErrMsg,
+    const sqlite3_api_routines *pApi) {
   return sqlite3_sqlitetokenizerar_init(db, pzErrMsg, pApi);
 }
+
+#undef SQLITE_TOKENIZER_AR_EXPORT
 
 #ifdef SQLITE_CORE
 int sqlite_tokenizer_ar_register(sqlite3 *db) {
