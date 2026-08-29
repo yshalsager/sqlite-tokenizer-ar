@@ -377,7 +377,7 @@ jobs:
               printf "INSERT INTO t(content) VALUES('قُرْآن كريم');\n"
               printf "SELECT count(*) FROM t WHERE t MATCH 'قران';\n"
               printf "SELECT sqlite_tokenizer_ar_normalize('قُرْآن ١٢٣',1,1,1,1,0,0);\n"
-            } | sqlite3 -batch -noheader :memory:
+            } | sqlite3 -batch -noheader :memory: | tr -d '\r'
           )"
           [[ "$output" == $'1\n1\nقران 123' ]]
           tar -C tokenizer/build -czf tokenizer/build/sqlite-tokenizer-ar-windows-x64.tar.gz sqlite_tokenizer_ar.dll
