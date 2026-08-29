@@ -1,23 +1,56 @@
 # sqlite-tokenizer-ar
 
-Native SQLite FTS5 tokenizer and compatibility helpers for Arabic search.
+Arabic search for SQLite FTS5, shipped as a native tokenizer extension, official SQLite WASM bundle, and optional Lucene-style query helpers.
 
 The core extension exposes an FTS5 tokenizer named `sqlite_tokenizer_ar`. It is designed to match the [Apache Lucene](https://lucene.apache.org/) Arabic analysis pipeline for tokenization, Arabic normalization, stopwords, digit folding, and light stemming, while running inside SQLite.
 
 Reference assets are pinned to Lucene `9.9.0` for reproducibility. The ArabicAnalyzer pipeline was source-diffed against Lucene `10.4.0` on 2026-06-07 with no behavior changes found.
 
 > [!CAUTION]
-> **Disclaimer:** This project was developed with heavy use of AI assistance. It's more like an AI experiment that a stable product. 
+> **Disclaimer:** This project was developed with heavy use of AI assistance. Treat it as an experiment rather than a stable product.
 
 ## Repository Layout
 
 - `tokenizer/`: loadable SQLite extension written in C.
-- `query_compat/`: optional Python compatibility layer that compiles Lucene-style query behavior to SQLite FTS plans and delegates shared analysis/parser helpers to C UDFs.
+- `query_compat/`: optional Python CLI/reference layer for Lucene-style query behavior; runtime analysis, parsing, planning, ranking, and highlighting primitives live in C UDFs.
 - `playground/`: browser demo source using official SQLite WASM built with the tokenizer extension.
 - `tests/fixtures/`: small public fixtures for smoke tests. Large/private corpus fixtures are intentionally excluded.
 - `ingester/sql/001_canonical_schema.sql`: minimal schema fixture used by query compatibility tests.
 
-## Build
+## Install
+
+Release archives provide the loadable extension for Linux x64/arm64, macOS arm64, and Windows x64:
+
+| Platform | Release archive | Installed library |
+| --- | --- | --- |
+| Linux x64 | `sqlite-tokenizer-ar-linux-x64.tar.gz` | `sqlite_tokenizer_ar.so` |
+| Linux arm64 | `sqlite-tokenizer-ar-linux-arm64.tar.gz` | `sqlite_tokenizer_ar.so` |
+| macOS arm64 | `sqlite-tokenizer-ar-macos-arm64.tar.gz` | `sqlite_tokenizer_ar.so` |
+| Windows x64 | `sqlite-tokenizer-ar-windows-x64.tar.gz` | `sqlite_tokenizer_ar.dll` |
+
+Install the correct archive automatically with [Mise](https://mise.jdx.dev/):
+
+```toml
+[tools."github:yshalsager/sqlite-tokenizer-ar"]
+version = "0.1.13"
+asset_pattern = 'sqlite-tokenizer-ar-{{ os() }}-{{ arch() }}.tar.gz'
+```
+
+```bash
+mise install
+export SQLITE_TOKENIZER_AR_EXTENSION="$(mise where github:yshalsager/sqlite-tokenizer-ar)/sqlite_tokenizer_ar.so"
+```
+
+On Windows PowerShell:
+
+```powershell
+mise install
+$env:SQLITE_TOKENIZER_AR_EXTENSION = "$(mise where github:yshalsager/sqlite-tokenizer-ar)\sqlite_tokenizer_ar.dll"
+```
+
+SQLite must have FTS5 and loadable-extension support enabled.
+
+## Build From Source
 
 ```bash
 mise run build
@@ -38,28 +71,6 @@ INSERT INTO docs(body) VALUES('قُرْآن كريم'),('هذه كتابها م�
 SELECT rowid, body FROM docs WHERE docs MATCH 'قران';
 ```
 
-## Mise Installation
-
-Release archives provide the native extension for Linux x64/arm64, macOS arm64, and Windows x64:
-
-```toml
-[tools."github:yshalsager/sqlite-tokenizer-ar"]
-version = "0.1.13"
-asset_pattern = 'sqlite-tokenizer-ar-{{ os() }}-{{ arch() }}.tar.gz'
-```
-
-Resolve the installed extension without compiling it locally:
-
-```bash
-export CATALOG_TOKENIZER_EXTENSION="$(mise where github:yshalsager/sqlite-tokenizer-ar)/sqlite_tokenizer_ar.so"
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:CATALOG_TOKENIZER_EXTENSION = "$(mise where github:yshalsager/sqlite-tokenizer-ar)\sqlite_tokenizer_ar.dll"
-```
-
 ## Tokenizer Features
 
 - Standard-style UTF-8 token segmentation for Arabic, Latin, and digits.
@@ -69,11 +80,15 @@ $env:CATALOG_TOKENIZER_EXTENSION = "$(mise where github:yshalsager/sqlite-tokeni
 - Arabic normalization: diacritics and tatweel stripping, alef/hamza normalization, dotless yeh to yeh, and teh marbuta to heh.
 - Lucene-style Arabic light stemming.
 - Tokenizer options for custom stopwords, stopword disabling, and stem exclusions.
-- Helper UDFs for analysis, normalization, stemming, sensitive-form checks, wildcard matching, Levenshtein distance, and query helper parsing.
+- Optional Unicode Arabic honorific expansion, including `ﷺ`, `ﷻ`, `﵀`, and related ligatures.
+- Analyzer-aware source spans and highlighting, including full stemmed words and one-glyph honorific sources.
+- Helper UDFs for analysis, normalization, strict-form checks, wildcard/fuzzy matching, query planning, ranking, and snippets.
+
+See the [tokenizer reference](tokenizer/README.md) for tokenizer arguments, UDF signatures, static registration, and integration examples.
 
 ## Query Compatibility Layer
 
-`query_compat/` is separate from the tokenizer. It implements query planning and execution behavior that SQLite FTS5 does not provide by itself:
+SQLite FTS5 provides indexing, `MATCH`, native prefix queries, BM25, `highlight()`, and `snippet()`. The compatibility layer adds behavior FTS5 does not provide by itself:
 
 - Boolean query parsing.
 - Prefix, suffix, wildcard, and fuzzy expansion.
@@ -82,7 +97,9 @@ $env:CATALOG_TOKENIZER_EXTENSION = "$(mise where github:yshalsager/sqlite-tokeni
 - Lucene-style scoring helpers and deterministic result ordering.
 - Snippet/highlight helper paths.
 
-Use it when you need Lucene-style search semantics. Use the tokenizer directly when you only need Arabic FTS tokenization inside SQLite.
+The schema-independent `sqlite_tokenizer_ar_plan_query_json()` C UDF returns `MATCH` templates plus unresolved corpus-dependent expansion descriptors. `sqlite_tokenizer_ar_execute_query_json()` is only for the repository's canonical query-compat schema. Keep application filtering, pagination, and custom result SQL outside it.
+
+Use the compatibility layer when you need Lucene-style query syntax. Use the tokenizer directly when Arabic analysis plus native SQLite FTS behavior is enough. See the [query compatibility reference](query_compat/README.md).
 
 ## Test
 
@@ -100,7 +117,7 @@ The playground uses official SQLite WASM built with this extension as an extra i
 
 ```bash
 SQLITE_SRC_DIR=/path/to/sqlite-source-tree mise run playground:build-wasm
-python3 -m http.server 8080
+mise x -- python -m http.server 8080
 ```
 
 Open `http://localhost:8080/playground/`.
@@ -129,10 +146,10 @@ For Node/Vitest:
 import sqlite3InitModule from '@yshalsager/sqlite-tokenizer-ar-wasm/node'
 ```
 
-Install from GitHub Packages with an authenticated npm client:
+Install the public package tarball directly from the release without npm authentication:
 
 ```bash
-npm install @yshalsager/sqlite-tokenizer-ar-wasm --registry=https://npm.pkg.github.com
+npm install https://github.com/yshalsager/sqlite-tokenizer-ar/releases/download/v0.1.13/yshalsager-sqlite-tokenizer-ar-wasm-0.1.13.tgz
 ```
 
 For apps that need fixed public paths, copy package `dist/*` to `public/sqlite-wasm/`.
