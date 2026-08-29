@@ -299,9 +299,14 @@ jobs:
         with:
           name: tokenizer-ios-${{ needs.build.outputs.release_label }}
           if-no-files-found: error
-          path: |
-            tokenizer/build/ios/sqlite-tokenizer-ar-ios.xcframework.zip
-            tokenizer/build/sqlite-tokenizer-ar-macos-arm64.tar.gz
+          path: tokenizer/build/ios/sqlite-tokenizer-ar-ios.xcframework.zip
+
+      - name: Upload macOS tokenizer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tokenizer-macos-arm64-${{ needs.build.outputs.release_label }}
+          if-no-files-found: error
+          path: tokenizer/build/sqlite-tokenizer-ar-macos-arm64.tar.gz
 
       - name: Run iOS simulator smoke
         continue-on-error: true
