@@ -286,6 +286,7 @@ jobs:
           set -euo pipefail
           [[ "$(uname -m)" == 'arm64' ]]
           mise run tokenizer:build
+          tokenizer/scripts/check_macos_deployment_target.sh 13.0
           mise x -- python tokenizer/scripts/smoke_test.py
           file tokenizer/build/sqlite_tokenizer_ar.so | grep -q 'Mach-O 64-bit.*arm64'
           tar -C tokenizer/build -czf tokenizer/build/sqlite-tokenizer-ar-macos-arm64.tar.gz sqlite_tokenizer_ar.so

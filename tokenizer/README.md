@@ -165,6 +165,10 @@ Notes:
 
 - SQLite must support FTS5.
 - On macOS, `mise run tokenizer:build` prefers Homebrew SQLite headers when available.
+- macOS builds target macOS 13.0 by default, independently of the build machine's SDK.
+  Override with `MACOSX_DEPLOYMENT_TARGET=14.0 mise run tokenizer:build` when needed.
+  CI checks the compiled library's deployment target and runs the smoke tests for both
+  the default and an override.
 - The extension is built as a loadable module and should not link libsqlite3 directly.
 
 ## Android Build
