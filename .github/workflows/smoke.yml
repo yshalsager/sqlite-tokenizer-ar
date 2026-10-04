@@ -35,3 +35,33 @@ jobs:
 
       - name: Run public smoke tests
         run: mise run test
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.3.10
+          install: true
+          cache: true
+          cache_key_prefix: mise-smoke-v1
+
+      - name: Check the default macOS deployment target
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -u MACOSX_DEPLOYMENT_TARGET mise run tokenizer:build
+          tokenizer/scripts/check_macos_deployment_target.sh 13.0
+          mise x -- python tokenizer/scripts/smoke_test.py
+
+      - name: Check an overridden macOS deployment target
+        shell: bash
+        run: |
+          set -euo pipefail
+          MACOSX_DEPLOYMENT_TARGET=14.0 mise run tokenizer:build
+          tokenizer/scripts/check_macos_deployment_target.sh 14.0
+          mise x -- python tokenizer/scripts/smoke_test.py
