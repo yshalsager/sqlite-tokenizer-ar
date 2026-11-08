@@ -88,7 +88,7 @@ mise x uv -- uv run --isolated --no-project --with dist/*.whl \
 
 The platform tag must match the compiled binary: Linux wheels are built inside `manylinux_2_28` containers, and macOS builds set `MACOSX_DEPLOYMENT_TARGET` to `11.0` for arm64 or `10.13` for Intel. Packaging rejects macOS binaries that require a newer OS than their wheel tag claims. Only wheel distribution is supported; no source distribution is published.
 
-Desktop and wheel builds use [pinned SQLite 3.53.2 headers](vendor/sqlite/README.md); no SQLite runtime is bundled.
+Desktop and wheel builds use [pinned SQLite headers](vendor/sqlite/README.md); no SQLite runtime is bundled.
 
 Packaging follows [sqlite-dateutil](https://github.com/simonw/sqlite-dateutil): a native SQLite library plus a small connection loader, tagged `py3-none-<platform>` rather than tied to a CPython ABI. Hatchling handles wheel metadata and file hashes; uv builds, tests, and publishes.
 
@@ -176,7 +176,7 @@ Release builds also pack the generated WASM bundle as:
 @yshalsager/sqlite-tokenizer-ar-wasm
 ```
 
-The current package is built from SQLite `version-3.53.2`. The pinned SQLite ref lives in `mise.toml` as `SQLITE_TOKENIZER_AR_SQLITE_REF`.
+The SQLite runtime/WASM release is pinned in `mise.toml` as `SQLITE_TOKENIZER_AR_SQLITE_REF`. Renovate opens separate SQLite update PRs and enables automerge for minor/patch updates after CI passes. The compatibility workflow loads the same extension into historical SQLite runtimes plus the updated ref on every PR and before PyPI publication; its current-runtime PR job also builds and smoke-tests the WASM package. Desktop headers remain independently pinned in [`vendor/sqlite`](vendor/sqlite/README.md); runtime bumps need no header regeneration.
 
 It exports stable asset URLs:
 

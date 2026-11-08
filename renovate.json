@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices", ":rebaseStalePrs", "group:allNonMajor"],
+  "labels": ["dependencies"],
+  "schedule": ["before 5am on saturday"],
+  "minimumReleaseAge": "3 days",
+  "prCreation": "not-pending",
+  "internalChecksFilter": "strict",
+  "platformAutomerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 5am on saturday"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^mise\\.toml$/"],
+      "matchStrings": ["SQLITE_TOKENIZER_AR_SQLITE_REF = 'version-(?<currentValue>\\d+\\.\\d+\\.\\d+)'"],
+      "depNameTemplate": "sqlite/sqlite",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^version-(?<version>\\d+\\.\\d+\\.\\d+)$",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchDepNames": ["sqlite/sqlite"],
+      "groupName": "SQLite",
+      "groupSlug": "sqlite",
+      "prBodyNotes": ["Updates the SQLite runtime/WASM ref, not the independently pinned desktop headers. CI tests historical runtimes plus the updated ref before merging."]
+    }
+  ]
+}
