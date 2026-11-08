@@ -86,7 +86,7 @@ mise x uv -- uv run --isolated --no-project --with dist/*.whl \
   python -I tests/test_python_wheel.py
 ```
 
-The platform tag must match the compiled binary: Linux wheels are built inside `manylinux_2_28` containers, and macOS builds set `MACOSX_DEPLOYMENT_TARGET` to `11.0` for arm64 or `10.13` for Intel. Only wheel distribution is supported; no source distribution is published.
+The platform tag must match the compiled binary: Linux wheels are built inside `manylinux_2_28` containers, and macOS builds set `MACOSX_DEPLOYMENT_TARGET` to `11.0` for arm64 or `10.13` for Intel. Packaging rejects macOS binaries that require a newer OS than their wheel tag claims. Only wheel distribution is supported; no source distribution is published.
 
 Packaging follows [sqlite-dateutil](https://github.com/simonw/sqlite-dateutil): a native SQLite library plus a small connection loader, tagged `py3-none-<platform>` rather than tied to a CPython ABI. Hatchling handles wheel metadata and file hashes; uv builds, tests, and publishes.
 

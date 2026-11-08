@@ -94,6 +94,8 @@ jobs:
         run: |
           mkdir -p tokenizer/build
           gcc -O2 -shared -Wall -Wextra -I/mingw64/include tokenizer/src/sqlite_tokenizer_ar.c -lm -o "$SQLITE_TOKENIZER_AR_BINARY"
+      - name: Test wheel build checks
+        run: uv run --no-project --with hatchling python -m unittest discover -s tests -p test_wheel_build.py
       - name: Build wheel
         run: uv build --wheel
       - name: Inspect Linux dependencies
