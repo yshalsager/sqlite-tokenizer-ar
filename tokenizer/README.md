@@ -164,7 +164,7 @@ Output:
 Notes:
 
 - SQLite must support FTS5.
-- On macOS, `mise run tokenizer:build` prefers Homebrew SQLite headers when available.
+- Desktop builds use pinned SQLite 3.53.2 headers in [`vendor/sqlite`](../vendor/sqlite/README.md), without needing Homebrew or system SQLite development packages. `SQLITE_CFLAGS` can override the default include flags.
 - macOS builds target macOS 13.0 by default, independently of the build machine's SDK.
   Override with `MACOSX_DEPLOYMENT_TARGET=14.0 mise run tokenizer:build` when needed.
   CI checks the compiled library's deployment target and runs the smoke tests for both

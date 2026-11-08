@@ -88,6 +88,8 @@ mise x uv -- uv run --isolated --no-project --with dist/*.whl \
 
 The platform tag must match the compiled binary: Linux wheels are built inside `manylinux_2_28` containers, and macOS builds set `MACOSX_DEPLOYMENT_TARGET` to `11.0` for arm64 or `10.13` for Intel. Packaging rejects macOS binaries that require a newer OS than their wheel tag claims. Only wheel distribution is supported; no source distribution is published.
 
+Desktop and wheel builds use [pinned SQLite 3.53.2 headers](vendor/sqlite/README.md); no SQLite runtime is bundled.
+
 Packaging follows [sqlite-dateutil](https://github.com/simonw/sqlite-dateutil): a native SQLite library plus a small connection loader, tagged `py3-none-<platform>` rather than tied to a CPython ABI. Hatchling handles wheel metadata and file hashes; uv builds, tests, and publishes.
 
 Tag pushes automatically build, test, and publish all five wheels to PyPI; pull requests and manual runs only build and test. Before pushing a release tag, configure a PyPI trusted publisher for repository `yshalsager/sqlite-tokenizer-ar`, workflow `python-wheels.yml`, environment `pypi`. The `v<version>` tag, `pyproject.toml`, and `package.json` versions must match. Publishing checks PyPI for matching existing files so reruns can skip them.

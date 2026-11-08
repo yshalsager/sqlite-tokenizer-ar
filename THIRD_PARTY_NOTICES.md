@@ -20,6 +20,8 @@ The Arabic stopword list distributed by Lucene is credited in the source file as
 
 ## SQLite
 
+The unmodified SQLite 3.53.2 headers in `vendor/sqlite/` are used for desktop extension and Python wheel builds. Their source archive and hashes are recorded in [`vendor/sqlite/README.md`](vendor/sqlite/README.md). The Python wheels include the extension, not a SQLite runtime.
+
 The playground build scripts target the official SQLite WASM source tree. Generated SQLite WASM artifacts are not committed by default.
 
 - Project: SQLite

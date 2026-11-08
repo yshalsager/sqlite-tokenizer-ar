@@ -33,14 +33,7 @@ cd tokenizer
 cc_bin="${CC:-cc}"
 cflags="${CFLAGS:--O2 -fPIC -Wall -Wextra}"
 uname_s="$(uname -s)"
-sqlite_cflags="${SQLITE_CFLAGS:-}"
-if [ -z "$sqlite_cflags" ]; then
-  if [ "$uname_s" = Darwin ] && command -v brew >/dev/null 2>&1 && brew --prefix sqlite >/dev/null 2>&1; then
-    sqlite_cflags="-I$(brew --prefix sqlite)/include"
-  else
-    sqlite_cflags="$(pkg-config --cflags sqlite3 2>/dev/null || true)"
-  fi
-fi
+sqlite_cflags="${SQLITE_CFLAGS:--I../vendor/sqlite}"
 if [ "$uname_s" = Darwin ]; then
   # Keep the minimum macOS version independent of the build machine's SDK.
   export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"

@@ -10,6 +10,7 @@ on:
       - 'sqlite_tokenizer_ar/**'
       - 'mise.toml'
       - 'tokenizer/**'
+      - 'vendor/sqlite/**'
       - 'query_compat/**'
       - 'tests/**'
       - '.github/workflows/python-wheels.yml'
@@ -72,28 +73,26 @@ jobs:
       - name: Build Linux extension
         if: runner.os == 'Linux'
         run: |
-          dnf install -y sqlite-devel
           mkdir -p tokenizer/build
-          cc -O2 -fPIC -shared -Wall -Wextra tokenizer/src/sqlite_tokenizer_ar.c -lm -o "$SQLITE_TOKENIZER_AR_BINARY"
+          cc -O2 -fPIC -shared -Wall -Wextra -Ivendor/sqlite tokenizer/src/sqlite_tokenizer_ar.c -lm -o "$SQLITE_TOKENIZER_AR_BINARY"
       - name: Build macOS extension
         if: runner.os == 'macOS'
         run: |
-          brew list sqlite >/dev/null 2>&1 || brew install sqlite
           mkdir -p tokenizer/build
-          cc -O2 -fPIC -dynamiclib -undefined dynamic_lookup -Wall -Wextra -I"$(brew --prefix sqlite)/include" \
+          cc -O2 -fPIC -dynamiclib -undefined dynamic_lookup -Wall -Wextra -Ivendor/sqlite \
             tokenizer/src/sqlite_tokenizer_ar.c -o "$SQLITE_TOKENIZER_AR_BINARY"
       - name: Setup Windows compiler
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-sqlite3
+          install: mingw-w64-x86_64-gcc
       - name: Build Windows extension
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           mkdir -p tokenizer/build
-          gcc -O2 -shared -Wall -Wextra -I/mingw64/include tokenizer/src/sqlite_tokenizer_ar.c -lm -o "$SQLITE_TOKENIZER_AR_BINARY"
+          gcc -O2 -shared -Wall -Wextra -Ivendor/sqlite tokenizer/src/sqlite_tokenizer_ar.c -lm -o "$SQLITE_TOKENIZER_AR_BINARY"
       - name: Test wheel build checks
         run: uv run --no-project --with hatchling python -m unittest discover -s tests -p test_wheel_build.py
       - name: Build wheel

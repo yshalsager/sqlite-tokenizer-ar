@@ -372,7 +372,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tokenizer/build
-          gcc -O2 -shared -Wall -Wextra -I/mingw64/include tokenizer/src/sqlite_tokenizer_ar.c -lm -o tokenizer/build/sqlite_tokenizer_ar.dll
+          gcc -O2 -shared -Wall -Wextra -Ivendor/sqlite tokenizer/src/sqlite_tokenizer_ar.c -lm -o tokenizer/build/sqlite_tokenizer_ar.dll
           file tokenizer/build/sqlite_tokenizer_ar.dll | grep -q 'PE32+ executable.*x86-64'
           dll_path="$(cygpath -m "$PWD/tokenizer/build/sqlite_tokenizer_ar.dll")"
           output="$(
