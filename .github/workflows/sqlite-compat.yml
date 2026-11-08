@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5
         with:
-          version: 2026.3.10
+          version: 2026.11.2
           install: true
           cache: true
       - name: Resolve historical and current runtimes
@@ -94,7 +94,7 @@ jobs:
         if: github.event_name != 'push' && matrix.sqlite_ref == needs.build.outputs.current
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5
         with:
-          version: 2026.3.10
+          version: 2026.11.2
           working_directory: playground
           install: true
           cache: true
