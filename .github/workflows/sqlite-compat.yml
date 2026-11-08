@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5
         with:
           version: 2026.3.10
           install: true
@@ -92,7 +92,7 @@ jobs:
           [[ "$output" == $'1\n1\n1\nقران 123' ]] || { printf 'Unexpected SQLite output:\n%s\n' "$output"; exit 1; }
       - name: Setup WASM toolchain
         if: github.event_name != 'push' && matrix.sqlite_ref == needs.build.outputs.current
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5
         with:
           version: 2026.3.10
           working_directory: playground
