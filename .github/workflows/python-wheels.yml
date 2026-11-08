@@ -55,6 +55,7 @@ jobs:
           - os: windows-latest
             platform: win_amd64
     env:
+      UV_MANAGED_PYTHON: 'true'
       MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos-target }}
       WHEEL_PLATFORM: ${{ matrix.platform }}
       SQLITE_TOKENIZER_AR_BINARY: tokenizer/build/sqlite_tokenizer_ar.${{ matrix.platform == 'win_amd64' && 'dll' || 'so' }}
