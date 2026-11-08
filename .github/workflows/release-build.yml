@@ -103,7 +103,7 @@ jobs:
 
       - name: Cache SQLite source tree
         id: cache_sqlite_source
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ steps.vars.outputs.sqlite_src_dir }}
           key: sqlite-source-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ steps.vars.outputs.cache_bust }}
@@ -142,7 +142,7 @@ jobs:
 
       - name: Cache ccache
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_ccache == 'true' }}
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.ccache
@@ -167,7 +167,7 @@ jobs:
 
       - name: Cache WASM bundle
         id: cache_wasm
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: playground/sqlite-wasm-custom
           key: wasm-bundle-${{ runner.os }}-${{ steps.vars.outputs.sqlite_ref }}-${{ hashFiles('tokenizer/src/**', 'playground/scripts/build_custom_wasm.sh', 'playground/scripts/verify_custom_wasm.sh') }}-${{ steps.vars.outputs.cache_bust }}
