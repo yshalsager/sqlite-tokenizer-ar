@@ -1,0 +1,108 @@
+name: sqlite-compat
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      sqlite_ref:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      refs: ${{ steps.refs.outputs.refs }}
+      current: ${{ steps.refs.outputs.current }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        with:
+          version: 2026.3.10
+          install: true
+          cache: true
+      - name: Resolve historical and current runtimes
+        id: refs
+        env:
+          SQLITE_REF: ${{ inputs.sqlite_ref }}
+        run: |
+          mise x -- python -c "
+          import json, os
+          refs = os.environ['SQLITE_TOKENIZER_AR_SQLITE_COMPAT_REFS'].split()
+          current = os.environ['SQLITE_REF'] or os.environ['SQLITE_TOKENIZER_AR_SQLITE_REF']
+          refs.append(current)
+          print('refs=' + json.dumps(list(dict.fromkeys(refs))))
+          print('current=' + current)
+          " >> "$GITHUB_OUTPUT"
+      - name: Build extension once against pinned headers
+        run: mise run tokenizer:build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sqlite-compat-extension
+          path: tokenizer/build/sqlite_tokenizer_ar.so
+          if-no-files-found: error
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlite_ref: ${{ fromJSON(needs.build.outputs.refs) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: sqlite-compat-extension
+          path: tokenizer/build
+      - name: Build SQLite runtime
+        env:
+          SQLITE_REF: ${{ matrix.sqlite_ref }}
+        run: |
+          git init sqlite-src
+          git -C sqlite-src fetch --depth 1 https://github.com/sqlite/sqlite.git "$SQLITE_REF"
+          git -C sqlite-src checkout --detach FETCH_HEAD
+          cd sqlite-src
+          ./configure CFLAGS='-O2 -DSQLITE_ENABLE_FTS5'
+          make -j2 sqlite3
+      - name: Load the same extension into this runtime
+        run: |
+          output="$(sqlite-src/sqlite3 -batch -bail -noheader :memory: <<'SQL'
+          .load ./tokenizer/build/sqlite_tokenizer_ar.so
+          SELECT sqlite_compileoption_used('ENABLE_FTS5');
+          CREATE VIRTUAL TABLE t USING fts5(content, tokenize='sqlite_tokenizer_ar');
+          INSERT INTO t(content) VALUES('قُرْآن كريم'),('هذه كتابها مفيد');
+          SELECT count(*) FROM t WHERE t MATCH 'قران';
+          SELECT count(*) FROM t WHERE t MATCH 'كتاب';
+          SELECT sqlite_tokenizer_ar_normalize('قُرْآن ١٢٣', 1, 1, 1, 1, 0, 0);
+          SQL
+          )"
+          [[ "$output" == $'1\n1\n1\nقران 123' ]] || { printf 'Unexpected SQLite output:\n%s\n' "$output"; exit 1; }
+      - name: Setup WASM toolchain
+        if: github.event_name != 'push' && matrix.sqlite_ref == needs.build.outputs.current
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        with:
+          version: 2026.3.10
+          working_directory: playground
+          install: true
+          cache: true
+      - name: Build and smoke test the current WASM package
+        if: github.event_name != 'push' && matrix.sqlite_ref == needs.build.outputs.current
+        run: |
+          (cd sqlite-src && ./configure --with-emsdk="$(mise -C ../playground where emsdk)")
+          SQLITE_SRC_DIR="$PWD/sqlite-src" mise -C playground run build-wasm
+          playground/scripts/verify_custom_wasm.sh
+          mise run wasm:package
+          mise x -- npm run smoke:node

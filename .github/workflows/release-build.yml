@@ -42,7 +42,6 @@ jobs:
       release_label: ${{ steps.vars.outputs.release_label }}
       cache_bust: ${{ steps.vars.outputs.cache_bust }}
       sqlite_ref: ${{ steps.vars.outputs.sqlite_ref }}
-      sqlite_compat_refs_json: ${{ steps.vars.outputs.sqlite_compat_refs_json }}
 
     steps:
       - name: Checkout
@@ -67,7 +66,6 @@ jobs:
           if [[ -z "${sqlite_ref}" ]]; then
             sqlite_ref="${SQLITE_TOKENIZER_AR_SQLITE_REF}"
           fi
-          compat_refs="${SQLITE_TOKENIZER_AR_SQLITE_COMPAT_REFS:-version-3.40.1 version-3.51.2 ${sqlite_ref}}"
           android_ndk_version="${SQLITE_TOKENIZER_AR_ANDROID_NDK_VERSION}"
           safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
           sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
@@ -88,14 +86,6 @@ jobs:
           echo "cache_bust=${cache_bust}" >> "${GITHUB_OUTPUT}"
           echo "release_label=${release_label}" >> "${GITHUB_OUTPUT}"
           echo "android_ndk_version=${android_ndk_version}" >> "${GITHUB_OUTPUT}"
-          json='['
-          sep=''
-          for ref in ${compat_refs}; do
-            json="${json}${sep}\"${ref}\""
-            sep=','
-          done
-          json="${json}]"
-          echo "sqlite_compat_refs_json=${json}" >> "${GITHUB_OUTPUT}"
 
       - name: Install OS build dependencies
         shell: bash
@@ -426,127 +416,6 @@ jobs:
   sqlite-compat-smoke:
     needs: build
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_sqlite_compat == 'true') }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        sqlite_ref: ${{ fromJSON(needs.build.outputs.sqlite_compat_refs_json) }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Resolve matrix variables
-        id: matrix_vars
-        shell: bash
-        run: |
-          set -euo pipefail
-          sqlite_ref='${{ matrix.sqlite_ref }}'
-          safe_ref="$(printf '%s' "${sqlite_ref}" | tr '/:@ ' '_')"
-          sqlite_src_dir="${GITHUB_WORKSPACE}/.build-tools/sqlite-src/${safe_ref}"
-          echo "sqlite_ref=${sqlite_ref}" >> "${GITHUB_OUTPUT}"
-          echo "sqlite_src_dir=${sqlite_src_dir}" >> "${GITHUB_OUTPUT}"
-
-      - name: Install OS build dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libsqlite3-dev git
-
-      - name: Download tokenizer artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: tokenizer-linux-${{ needs.build.outputs.release_label }}
-          path: tokenizer/build
-
-      - name: Cache SQLite source tree
-        id: cache_sqlite_source
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.matrix_vars.outputs.sqlite_src_dir }}
-          key: sqlite-compat-source-${{ runner.os }}-${{ steps.matrix_vars.outputs.sqlite_ref }}-${{ needs.build.outputs.cache_bust }}
-
-      - name: Fetch SQLite source
-        if: steps.cache_sqlite_source.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          sqlite_ref='${{ steps.matrix_vars.outputs.sqlite_ref }}'
-          sqlite_src_dir='${{ steps.matrix_vars.outputs.sqlite_src_dir }}'
-
-          mkdir -p "${sqlite_src_dir}"
-          if [[ ! -d "${sqlite_src_dir}/.git" ]]; then
-            git -C "${sqlite_src_dir}" init
-          fi
-
-          if git -C "${sqlite_src_dir}" remote get-url origin >/dev/null 2>&1; then
-            git -C "${sqlite_src_dir}" remote set-url origin https://github.com/sqlite/sqlite.git
-          else
-            git -C "${sqlite_src_dir}" remote add origin https://github.com/sqlite/sqlite.git
-          fi
-
-          git -C "${sqlite_src_dir}" fetch --depth 1 origin "${sqlite_ref}"
-          git -C "${sqlite_src_dir}" checkout --force FETCH_HEAD
-          git -C "${sqlite_src_dir}" clean -fdx
-
-      - name: Build SQLite shell for matrix runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          sqlite_src_dir='${{ steps.matrix_vars.outputs.sqlite_src_dir }}'
-          cd "${sqlite_src_dir}"
-          if [[ -x sqlite3 ]]; then
-            echo "sqlite3 shell already present from cache; skipping rebuild"
-            exit 0
-          fi
-          ./configure CFLAGS='-O2 -DSQLITE_ENABLE_FTS5'
-          make -j2 sqlite3
-
-      - name: Run tokenizer compatibility smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          sqlite_bin='${{ steps.matrix_vars.outputs.sqlite_src_dir }}/sqlite3'
-          ext_path="${GITHUB_WORKSPACE}/tokenizer/build/sqlite_tokenizer_ar.so"
-
-          if [[ ! -x "${sqlite_bin}" ]]; then
-            echo "error: sqlite shell not found at ${sqlite_bin}" >&2
-            exit 1
-          fi
-          if [[ ! -f "${ext_path}" ]]; then
-            echo "error: tokenizer extension not found at ${ext_path}" >&2
-            exit 1
-          fi
-
-          output="$(
-            {
-              printf '.load %s\n' "${ext_path}"
-              printf "SELECT sqlite_compileoption_used('ENABLE_FTS5');\n"
-              printf "CREATE VIRTUAL TABLE t USING fts5(content, tokenize='sqlite_tokenizer_ar');\n"
-              printf "INSERT INTO t(content) VALUES('قُرْآن كريم'),('هذه كتابها مفيد');\n"
-              printf "SELECT count(*) FROM t WHERE t MATCH 'قران';\n"
-              printf "SELECT count(*) FROM t WHERE t MATCH 'كتاب';\n"
-              printf "SELECT sqlite_tokenizer_ar_normalize('قُرْآن ١٢٣', 1, 1, 1, 1, 0, 0);\n"
-            } | "${sqlite_bin}" -batch -noheader :memory:
-          )"
-          mapfile -t lines <<< "${output}"
-
-          if [[ "${#lines[@]}" -lt 4 ]]; then
-            echo "error: unexpected smoke output for ${{ matrix.sqlite_ref }}" >&2
-            printf '%s\n' "${output}" >&2
-            exit 1
-          fi
-
-          fts5_enabled="${lines[0]}"
-          quran_hits="${lines[1]}"
-          kitab_hits="${lines[2]}"
-          normalized="${lines[3]}"
-
-          [[ "${fts5_enabled}" == "1" ]] || { echo "error: FTS5 not enabled for ${{ matrix.sqlite_ref }}"; exit 1; }
-          [[ "${quran_hits}" == "1" ]] || { echo "error: expected قران hits=1 for ${{ matrix.sqlite_ref }}, got ${quran_hits}"; exit 1; }
-          [[ "${kitab_hits}" == "1" ]] || { echo "error: expected كتاب hits=1 for ${{ matrix.sqlite_ref }}, got ${kitab_hits}"; exit 1; }
-          [[ "${normalized}" == "قران 123" ]] || { echo "error: normalization mismatch for ${{ matrix.sqlite_ref }}: ${normalized}"; exit 1; }
-
-          echo "ok: sqlite runtime compat smoke passed for ${{ matrix.sqlite_ref }}"
+    uses: ./.github/workflows/sqlite-compat.yml
+    with:
+      sqlite_ref: ${{ needs.build.outputs.sqlite_ref }}

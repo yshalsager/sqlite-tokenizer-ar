@@ -29,6 +29,10 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/smoke.yml
 
+  sqlite-compat:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/sqlite-compat.yml
+
   wheels:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -112,7 +116,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [tests, wheels]
+    needs: [tests, sqlite-compat, wheels]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
