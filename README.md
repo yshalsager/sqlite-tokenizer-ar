@@ -50,6 +50,48 @@ $env:SQLITE_TOKENIZER_AR_EXTENSION = "$(mise where github:yshalsager/sqlite-toke
 
 SQLite must have FTS5 and loadable-extension support enabled.
 
+### Python
+
+Install from PyPI with Python 3.10+:
+
+```bash
+pip install sqlite-tokenizer-ar
+# Or with uv:
+uv add sqlite-tokenizer-ar
+```
+
+Prebuilt wheels support Linux x64/arm64 (glibc 2.28+), macOS arm64 (11+) and Intel (10.13+), and Windows x64.
+
+```python
+import sqlite3
+import sqlite_tokenizer_ar
+
+db = sqlite3.connect(':memory:')
+sqlite_tokenizer_ar.load(db)
+db.execute("CREATE VIRTUAL TABLE docs USING fts5(body, tokenize='sqlite_tokenizer_ar')")
+```
+
+`load(db)` enables extension loading temporarily and disables it afterward, including on failure. Call it for each connection. `loadable_path()` returns the bundled library's full path for other SQLite clients. Python's SQLite must support FTS5 and extension loading; the wheel does not replace SQLite.
+
+#### Building and Publishing Wheels
+
+To build a wheel locally after compiling the native extension:
+
+```bash
+# macOS arm64; on Linux use a matching manylinux build container instead.
+MACOSX_DEPLOYMENT_TARGET=11.0 mise run tokenizer:build
+SQLITE_TOKENIZER_AR_BINARY=tokenizer/build/sqlite_tokenizer_ar.so \
+  WHEEL_PLATFORM=macosx_11_0_arm64 mise x uv -- uv build --wheel
+mise x uv -- uv run --isolated --no-project --with dist/*.whl \
+  python -I tests/test_python_wheel.py
+```
+
+The platform tag must match the compiled binary: Linux wheels are built inside `manylinux_2_28` containers, and macOS builds set `MACOSX_DEPLOYMENT_TARGET` to `11.0` for arm64 or `10.13` for Intel. Only wheel distribution is supported; no source distribution is published.
+
+Packaging follows [sqlite-dateutil](https://github.com/simonw/sqlite-dateutil): a native SQLite library plus a small connection loader, tagged `py3-none-<platform>` rather than tied to a CPython ABI. Hatchling handles wheel metadata and file hashes; uv builds, tests, and publishes.
+
+Tag pushes automatically build, test, and publish all five wheels to PyPI; pull requests and manual runs only build and test. Before pushing a release tag, configure a PyPI trusted publisher for repository `yshalsager/sqlite-tokenizer-ar`, workflow `python-wheels.yml`, environment `pypi`. The `v<version>` tag, `pyproject.toml`, and `package.json` versions must match. Publishing checks PyPI for matching existing files so reruns can skip them.
+
 ## Build From Source
 
 ```bash

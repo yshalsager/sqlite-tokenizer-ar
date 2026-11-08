@@ -1,0 +1,22 @@
+[build-system]
+requires = ['hatchling>=1.27']
+build-backend = 'hatchling.build'
+
+[project]
+name = 'sqlite-tokenizer-ar'
+version = '0.1.14'
+description = 'Arabic FTS5 tokenizer and search helpers for SQLite'
+readme = 'README.md'
+requires-python = '>=3.10'
+license = 'Apache-2.0'
+license-files = ['LICENSE', 'THIRD_PARTY_NOTICES.md']
+
+[project.urls]
+Homepage = 'https://github.com/yshalsager/sqlite-tokenizer-ar'
+Issues = 'https://github.com/yshalsager/sqlite-tokenizer-ar/issues'
+
+[tool.hatch.build.targets.wheel]
+packages = ['sqlite_tokenizer_ar']
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = 'hatch_build.py'
