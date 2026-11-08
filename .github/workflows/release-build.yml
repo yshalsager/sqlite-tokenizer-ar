@@ -95,7 +95,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends build-essential pkg-config libsqlite3-dev git wabt
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
 
       - name: Install Android NDK
         shell: bash
@@ -207,7 +207,7 @@ jobs:
           (cd tokenizer/build && python3 -m zipfile -c sqlite-tokenizer-ar-android.zip android)
 
       - name: Upload tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-linux-${{ steps.vars.outputs.release_label }}
           if-no-files-found: error
@@ -217,7 +217,7 @@ jobs:
             tokenizer/build/sqlite-tokenizer-ar-linux-x64.tar.gz
 
       - name: Upload WASM bundle artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sqlite-wasm-custom-${{ steps.vars.outputs.release_label }}
           if-no-files-found: error
@@ -231,14 +231,14 @@ jobs:
             playground/sqlite-wasm-custom/SHA256SUMS
 
       - name: Upload Android tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-android-${{ steps.vars.outputs.release_label }}
           if-no-files-found: error
           path: tokenizer/build/sqlite-tokenizer-ar-android.zip
 
       - name: Upload npm WASM package artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sqlite-tokenizer-ar-wasm-npm-${{ steps.vars.outputs.release_label }}
           if-no-files-found: error
@@ -286,14 +286,14 @@ jobs:
         run: mise run tokenizer:build-ios
 
       - name: Upload iOS tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-ios-${{ needs.build.outputs.release_label }}
           if-no-files-found: error
           path: tokenizer/build/ios/sqlite-tokenizer-ar-ios.xcframework.zip
 
       - name: Upload macOS tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-macos-arm64-${{ needs.build.outputs.release_label }}
           if-no-files-found: error
@@ -336,7 +336,7 @@ jobs:
           tar -C tokenizer/build -czf tokenizer/build/sqlite-tokenizer-ar-linux-arm64.tar.gz sqlite_tokenizer_ar.so
 
       - name: Upload Linux arm64 tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-linux-arm64-${{ needs.build.outputs.release_label }}
           if-no-files-found: error
@@ -350,7 +350,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
           install: >-
@@ -379,7 +379,7 @@ jobs:
           tar -C tokenizer/build -czf tokenizer/build/sqlite-tokenizer-ar-windows-x64.tar.gz sqlite_tokenizer_ar.dll
 
       - name: Upload Windows x64 tokenizer artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: tokenizer-windows-x64-${{ needs.build.outputs.release_label }}
           if-no-files-found: error
@@ -391,7 +391,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: '*-${{ needs.build.outputs.release_label }}'
           merge-multiple: true
@@ -406,7 +406,7 @@ jobs:
           sha256sum * > SHA256SUMS
 
       - name: Publish release assets (tag runs)
-        uses: softprops/action-gh-release@v3.0.0
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ github.ref_name }}
           draft: false
