@@ -4,7 +4,7 @@ build-backend = 'hatchling.build'
 
 [project]
 name = 'sqlite-tokenizer-ar'
-version = '0.1.14'
+version = '0.1.15'
 description = 'Arabic FTS5 tokenizer and search helpers for SQLite'
 readme = 'README.md'
 requires-python = '>=3.10'

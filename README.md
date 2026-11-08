@@ -32,7 +32,7 @@ Install the correct archive automatically with [Mise](https://mise.jdx.dev/):
 
 ```toml
 [tools."github:yshalsager/sqlite-tokenizer-ar"]
-version = "0.1.13"
+version = "0.1.15"
 asset_pattern = 'sqlite-tokenizer-ar-{{ os() }}-{{ arch() }}.tar.gz'
 ```
 
@@ -195,7 +195,7 @@ import sqlite3InitModule from '@yshalsager/sqlite-tokenizer-ar-wasm/node'
 Install the public package tarball directly from the release without npm authentication:
 
 ```bash
-npm install https://github.com/yshalsager/sqlite-tokenizer-ar/releases/download/v0.1.13/yshalsager-sqlite-tokenizer-ar-wasm-0.1.13.tgz
+npm install https://github.com/yshalsager/sqlite-tokenizer-ar/releases/download/v0.1.15/yshalsager-sqlite-tokenizer-ar-wasm-0.1.15.tgz
 ```
 
 For apps that need fixed public paths, copy package `dist/*` to `public/sqlite-wasm/`.
