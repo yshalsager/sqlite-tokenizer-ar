@@ -176,7 +176,9 @@ Release builds also pack the generated WASM bundle as:
 @yshalsager/sqlite-tokenizer-ar-wasm
 ```
 
-The SQLite runtime/WASM release is pinned in `mise.toml` as `SQLITE_TOKENIZER_AR_SQLITE_REF`. Renovate opens separate SQLite update PRs and enables automerge for minor/patch updates after CI passes. The compatibility workflow loads the same extension into historical SQLite runtimes plus the updated ref on every PR and before PyPI publication; its current-runtime PR job also builds and smoke-tests the WASM package. Desktop headers remain independently pinned in [`vendor/sqlite`](vendor/sqlite/README.md); runtime bumps need no header regeneration.
+The SQLite release is pinned in `mise.toml` as `SQLITE_TOKENIZER_AR_SQLITE_REF`. On Renovate's SQLite PRs, `sqlite-headers.yml` refreshes both vendored headers and their hashes, commits the result to the same branch, and explicitly dispatches public tests, five wheel builds, runtime compatibility, and WASM checks for that commit. Version checks block merging stale headers. Renovate automerges minor/patch updates after CI passes; no extra App or secret is needed.
+
+The compatibility matrix tests historical SQLite runtimes plus the current ref using the same extension binary. For manual SQLite bumps, run `mise run sqlite:update`, then `mise run test`, and commit the generated `vendor/sqlite/` changes.
 
 It exports stable asset URLs:
 

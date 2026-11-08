@@ -7,6 +7,7 @@ on:
     paths:
       - 'pyproject.toml'
       - 'hatch_build.py'
+      - 'scripts/update_sqlite.py'
       - 'sqlite_tokenizer_ar/**'
       - 'mise.toml'
       - 'tokenizer/**'
@@ -68,6 +69,7 @@ jobs:
           python-version: '3.12'
       - name: Check version
         run: |
+          uv run --no-project python scripts/update_sqlite.py --check
           uv run --no-project python -c "
           import json, os, tomllib
           version = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']

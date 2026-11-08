@@ -9,4 +9,4 @@ Unmodified public-domain headers from SQLite **3.54.1**, matching `SQLITE_TOKENI
 
 Desktop extension and Python wheel builds use these headers, not system SQLite headers. No SQLite runtime is bundled or linked into the extension. Android/WASM builds retain headers from their configured SQLite source; iOS uses its SDK headers.
 
-To update, extract both headers from the official amalgamation archive and update this file's version, source URL, and hashes together. Run the public tests, runtime compatibility matrix, and native wheel builds before merging.
+Renovate's SQLite PRs automatically regenerate these files and rerun CI. For manual updates, change the pinned ref and run `mise run sqlite:update`. The updater verifies the amalgamation against the release's published SHA3-256 checksum before writing files. `mise run sqlite:check` checks the header version without downloading.

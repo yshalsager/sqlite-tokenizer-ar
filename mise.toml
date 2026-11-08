@@ -18,7 +18,16 @@ depends = ['tokenizer:build', 'query:build']
 
 [tasks.test]
 description = 'Run the public smoke test lane'
-depends = ['tokenizer:test', 'query:public-test']
+depends = ['sqlite:check', 'tokenizer:test', 'query:public-test']
+run = 'python -m unittest discover -s tests -p test_sqlite_update.py'
+
+[tasks.'sqlite:update']
+description = 'Refresh headers and provenance from the pinned SQLite release'
+run = 'python scripts/update_sqlite.py'
+
+[tasks.'sqlite:check']
+description = 'Check that headers match the pinned SQLite release'
+run = 'python scripts/update_sqlite.py --check'
 
 [tasks.clean]
 description = 'Remove local build outputs'

@@ -7,6 +7,7 @@
   "prCreation": "not-pending",
   "internalChecksFilter": "strict",
   "platformAutomerge": false,
+  "gitIgnoredAuthors": ["41898282+github-actions[bot]@users.noreply.github.com"],
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": true,
@@ -32,7 +33,7 @@
       "matchDepNames": ["sqlite/sqlite"],
       "groupName": "SQLite",
       "groupSlug": "sqlite",
-      "prBodyNotes": ["Updates the SQLite runtime/WASM ref, not the independently pinned desktop headers. CI tests historical runtimes plus the updated ref before merging."]
+      "prBodyNotes": ["The sqlite-headers workflow updates vendored headers and reruns public tests, five wheel builds, runtime compatibility, and WASM checks on the generated commit before merging."]
     }
   ]
 }

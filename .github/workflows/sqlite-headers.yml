@@ -1,0 +1,70 @@
+name: sqlite-headers
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: ['mise.toml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqlite-headers-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'renovate/sqlite'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_REF: ${{ github.head_ref }}
+      UV_MANAGED_PYTHON: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: '3.12'
+      - name: Regenerate headers and run CI on the generated commit
+        run: |
+          uv run --no-project python scripts/update_sqlite.py
+          if ! git diff --quiet -- vendor/sqlite; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add vendor/sqlite/sqlite3.h vendor/sqlite/sqlite3ext.h vendor/sqlite/README.md
+            git commit -m 'build: update SQLite headers'
+            git push origin "HEAD:$HEAD_REF"
+          fi
+          sha="$(git rev-parse HEAD)"
+          set_status() {
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$sha" -f state="$1" -f context=sqlite-headers \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+          }
+          trap 'set_status failure' ERR
+          set_status pending
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # GITHUB_TOKEN pushes do not trigger PR workflows; explicit dispatches do.
+          for workflow in smoke.yml python-wheels.yml sqlite-compat.yml; do
+            gh workflow run "$workflow" --ref "$HEAD_REF"
+          done
+          for workflow in smoke.yml python-wheels.yml sqlite-compat.yml; do
+            for _ in {1..30}; do
+              run="$(gh run list --workflow "$workflow" --commit "$sha" --event workflow_dispatch \
+                --json databaseId,createdAt --jq "map(select(.createdAt >= \"$started\")) | .[0].databaseId // empty")"
+              [[ -n "$run" ]] && break
+              sleep 2
+            done
+            [[ -n "$run" ]]
+            gh run watch "$run" --interval 20 --exit-status
+          done
+          set_status success
+          trap - ERR
