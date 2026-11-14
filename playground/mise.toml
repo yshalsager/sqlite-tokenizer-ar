@@ -1,5 +1,5 @@
 [tools]
-node = '22'
+node = '26'
 emsdk = '4.0'
 
 [tasks.'build-wasm']
