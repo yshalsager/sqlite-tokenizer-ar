@@ -222,6 +222,10 @@ static const HonorificExpansion HONORIFIC_EXPANSIONS[] = {
 #undef HONORIFIC_EXPANSION_ENTRY
 
 static const HonorificExpansion *find_honorific_expansion(const char *text, int nText) {
+  /* All glyphs are Arabic Presentation Forms with UTF-8 lead byte 0xEF. */
+  if (nText <= 0 || (unsigned char)text[0] != 0xEF) {
+    return NULL;
+  }
   int count = (int)(sizeof(HONORIFIC_EXPANSIONS) / sizeof(HONORIFIC_EXPANSIONS[0]));
   for (int i = 0; i < count; i++) {
     const HonorificExpansion *expansion = &HONORIFIC_EXPANSIONS[i];

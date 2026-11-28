@@ -132,8 +132,21 @@ def main() -> None:
             ('﷿', 'عز وجل'),
         ]
         conn.execute("CREATE VIRTUAL TABLE t_honorific_on USING fts5(content, tokenize='sqlite_tokenizer_ar honorific_expansions')")
-        for rowid, (glyph, phrase) in enumerate(honorific_cases, 1):
-            conn.execute('INSERT INTO t_honorific_on(rowid, content) VALUES (?, ?)', (rowid, f'قال {glyph}'))
+        conn.execute("CREATE VIRTUAL TABLE tv_honorific USING fts5vocab(t_honorific_on, 'instance')")
+        for content, expected in (
+            ('﵀', [('رحم', 0), ('له', 1)]),
+            ('﵀ قال', [('رحم', 0), ('له', 1), ('قال', 2)]),
+            ('قال ﵀', [('قال', 0), ('رحم', 1), ('له', 2)]),
+            ('قال ﵀ في', [('قال', 0), ('رحم', 1), ('له', 2)]),
+            ('قال﵀', [('قالرحم', 0), ('له', 1)]),
+            ('﵀قال', [('رحم', 0), ('لهقال', 1)]),
+        ):
+            rowid = conn.execute('INSERT INTO t_honorific_on(content) VALUES (?)', (content,)).lastrowid
+            actual = conn.execute('SELECT term, offset FROM tv_honorific WHERE doc = ? ORDER BY offset', (rowid,)).fetchall()
+            if actual != expected:
+                raise SystemExit(f'error: honorific tokens for {content!r} expected={expected!r} got={actual!r}')
+        for glyph, phrase in honorific_cases:
+            rowid = conn.execute('INSERT INTO t_honorific_on(content) VALUES (?)', (f'قال {glyph}',)).lastrowid
             assert_table_row_match(conn, 't_honorific_on', rowid, f'"{phrase}"')
 
         conn.execute("CREATE VIRTUAL TABLE tv USING fts5vocab(t, 'row')")
@@ -163,6 +176,13 @@ def main() -> None:
         )
         assert_value(
             conn,
+            "SELECT sqlite_tokenizer_ar_analyze_positions_json(?)",
+            ('كتاب في الصلاة من النساء',),
+            '[{"term":"كتاب","position":0},{"term":"صلا","position":2},{"term":"نساء","position":4}]',
+            'default stopwords leave position gaps',
+        )
+        assert_value(
+            conn,
             "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
             (
                 '"برجوعه فيها" AND *عرب',
@@ -175,9 +195,9 @@ def main() -> None:
         assert_value(
             conn,
             "SELECT sqlite_tokenizer_ar_plan_query_json(?, ?, ?)",
-            ('"سنة ١٤٤٥ سنة ﵀"', 'page', '{"tokenizer_args":["honorific_expansions"]}'),
-            '{"match_template":{"page":"(\\"سن 1445 سن رحم له\\")"},"verify":[{"mode":"phrase","raw_terms":["سنة","١٤٤٥","سنة","﵀"]}],"expand":[],"unsupported":[]}',
-            'query plan preserves raw phrase terms',
+            ('"﵀ سنة ١٤٤٥ سنة"', 'page', '{"tokenizer_args":["honorific_expansions"]}'),
+            '{"match_template":{"page":"(\\"رحم له سن 1445 سن\\")"},"verify":[{"mode":"phrase","raw_terms":["﵀","سنة","١٤٤٥","سنة"]}],"expand":[],"unsupported":[]}',
+            'query plan expands the honorific and preserves raw phrase terms',
         )
         assert_value(
             conn,
