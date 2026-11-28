@@ -10,9 +10,7 @@ static int is_stopword(const ArabicTokenizer *tokenizer, const char *token, int 
   }
 
   for (int i = 0; i < kArabicStopwords99Count; i++) {
-    const char *stop = kArabicStopwords99[i];
-    int stopLen = (int)strlen(stop);
-    if (stopLen == nToken && memcmp(token, stop, nToken) == 0) {
+    if (kArabicStopwords99[i].len == nToken && memcmp(token, kArabicStopwords99[i].term, (size_t)nToken) == 0) {
       return 1;
     }
   }
